@@ -11,10 +11,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 
 # Load recommender
-try:
-    from recommender import MovieRecommender
-except ImportError:
-    from backend.recommender import MovieRecommender
+from recommender import MovieRecommender
 
 # Initialize app
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))

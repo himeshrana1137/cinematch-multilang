@@ -110,7 +110,7 @@ export default function App() {
     fetchPopular();
   }, [fetchPopular]);
 
-  // Support direct modal opening via ?movie=<id>
+  // Support direct modal opening via ?movie=<id> or carousel scroll via ?scroll=carousel
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const movieIdParam = urlParams.get('movie');
@@ -120,10 +120,15 @@ export default function App() {
         .then((m) => {
           if (m) {
             setModalMovie(m);
-            setModalPlayTrailer(true);
+            setModalPlayTrailer(false);
           }
         })
         .catch((err) => console.error('Error opening movie from query param:', err));
+    }
+    if (urlParams.get('scroll') === 'carousel') {
+      setTimeout(() => {
+        recsSectionRef.current?.scrollIntoView({ behavior: 'instant' });
+      }, 700);
     }
   }, []);
 
@@ -168,7 +173,7 @@ export default function App() {
       <Navbar onSelectMovie={handleSelectMovie} activeQueryValue={activeChip.queryValue} />
 
       {/* Main Container */}
-      <main style={{ flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', padding: '24px 24px 0 24px' }}>
+      <main className="main-container">
         {/* Error Banner */}
         {error && <ErrorBanner message={error} onRetry={fetchPopular} />}
 

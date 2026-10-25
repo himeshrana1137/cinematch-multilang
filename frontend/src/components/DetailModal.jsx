@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Play, Star, Clock, Calendar, Globe2, ExternalLink, User, Tv, Globe } from 'lucide-react';
+import { X, Play, Star, Clock, Calendar, Globe2, ExternalLink, User, Tv, Globe, Maximize } from 'lucide-react';
+
+const LANG_NAME_MAP = {
+  en: 'English',
+  hi: 'Hindi',
+  gu: 'Gujarati',
+  ta: 'Tamil',
+  te: 'Telugu',
+  ml: 'Malayalam',
+  kn: 'Kannada',
+};
 
 export default function DetailModal({ movie, onClose, autoPlayTrailer = false }) {
   const [showTrailer, setShowTrailer] = useState(autoPlayTrailer);
@@ -8,8 +18,22 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
   const [activeLang, setActiveLang] = useState(null);
   const [isSwapping, setIsSwapping] = useState(false);
   const [hasUserSwapped, setHasUserSwapped] = useState(false);
+  const [isPlayerSticky, setIsPlayerSticky] = useState(true);
 
   const tabsContainerRef = useRef(null);
+  const modalScrollRef = useRef(null);
+  const playerSectionRef = useRef(null);
+  const detailsRef = useRef(null);
+  const iframeRef = useRef(null);
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    const origOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = origOverflow;
+    };
+  }, []);
 
   // Sync autoPlayTrailer if changed
   useEffect(() => {
@@ -50,11 +74,44 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Handle sticky player release on phone scroll:
+  // Stays visible while user interacts with chips, releases when scrolling down to cast/overview
+  useEffect(() => {
+    const scrollEl = modalScrollRef.current;
+    if (!scrollEl) return;
+
+    const handleScroll = () => {
+      if (window.innerWidth >= 640) {
+        setIsPlayerSticky(false);
+        return;
+      }
+      const detailsEl = detailsRef.current;
+      if (!detailsEl) return;
+      const detailsRect = detailsEl.getBoundingClientRect();
+      // Release stickiness once details section has scrolled up near the player
+      if (detailsRect.top < 310) {
+        setIsPlayerSticky(false);
+      } else {
+        setIsPlayerSticky(true);
+      }
+    };
+
+    scrollEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', handleScroll);
+  }, []);
+
   if (!movie) return null;
 
   const currentMovie = details || movie;
   const trailers = currentMovie.trailers || [];
-  const origLangName = currentMovie.original_language_name || currentMovie.language_name || 'Original';
+
+  // Resolve real trailer language name (never "Hollywood", always "English", "Telugu", etc.)
+  const origTrailerObj = trailers.find((t) => t.is_original);
+  const origLangName =
+    origTrailerObj?.lang_name ||
+    LANG_NAME_MAP[currentMovie.language] ||
+    (currentMovie.language_name === 'Hollywood' ? 'English' : currentMovie.language_name) ||
+    'English';
 
   // Determine active trailer object
   const activeTrailer = trailers.find((t) => t.lang === activeLang) || trailers[0] || null;
@@ -95,254 +152,124 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
     }
   };
 
+  // Request Fullscreen
+  const handleFullscreen = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    if (iframe.requestFullscreen) {
+      iframe.requestFullscreen();
+    } else if (iframe.webkitRequestFullscreen) {
+      iframe.webkitRequestFullscreen();
+    } else if (iframe.mozRequestFullScreen) {
+      iframe.mozRequestFullScreen();
+    } else if (iframe.msRequestFullscreen) {
+      iframe.msRequestFullscreen();
+    }
+  };
+
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        backdropFilter: 'blur(12px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-      }}
-    >
+    <div className="detail-modal-overlay" onClick={onClose}>
       <div
+        ref={modalScrollRef}
+        className="detail-modal-sheet"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#12121a',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderRadius: '24px',
-          width: '100%',
-          maxWidth: '880px',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          position: 'relative',
-          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.9), 0 0 30px var(--accent-violet-glow)',
-        }}
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          aria-label="Close modal"
-          style={{
-            position: 'absolute',
-            top: '16px',
-            right: '16px',
-            width: '38px',
-            height: '38px',
-            borderRadius: '50%',
-            background: 'rgba(10, 10, 15, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            zIndex: 30,
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-violet)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(10, 10, 15, 0.8)'; }}
-        >
-          <X size={20} />
-        </button>
-
-        {/* Video & Trailer Header Section */}
-        <div style={{ padding: '24px 28px 0 28px', background: 'linear-gradient(to bottom, #181824 0%, #12121a 100%)' }}>
-          {/* Header Row */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px',
-            marginBottom: '16px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: 'rgba(124, 92, 255, 0.18)',
-                border: '1px solid rgba(124, 92, 255, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <Tv size={20} color="var(--accent-violet)" />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
-                    Official Trailer
-                  </h3>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    background: 'rgba(34, 197, 94, 0.15)',
-                    border: '1px solid rgba(34, 197, 94, 0.35)',
-                    color: '#4ade80',
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-pill)',
-                    fontSize: '0.74rem',
-                    fontWeight: 600,
-                  }}>
-                    {origLangName} (Original Language)
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  {currentMovie.title} — Verified TMDB YouTube Player
-                </p>
-              </div>
-            </div>
-
-            {/* Original Language status indicator */}
+        {/* Sticky Top Bar: Title on left, never overlaps 44px close button on right */}
+        <div className="detail-modal-topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
             <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(124, 92, 255, 0.2)',
+              border: '1px solid rgba(124, 92, 255, 0.4)',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8rem',
-              color: 'var(--text-secondary)',
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              padding: '4px 12px',
-              borderRadius: 'var(--radius-pill)'
+              justifyContent: 'center',
+              flexShrink: 0
             }}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#22c55e',
-                boxShadow: '0 0 8px rgba(34, 197, 94, 0.6)'
-              }} />
-              <span>Original Language: <strong style={{ color: '#ffffff' }}>{origLangName}</strong></span>
+              <Tv size={16} color="var(--accent-violet)" />
             </div>
-          </div>
-
-          {/* Rounded Dark Bar: Available Trailer Languages Chips */}
-          <div style={{
-            background: 'rgba(10, 10, 15, 0.75)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '14px',
-            padding: '10px 16px',
-            marginBottom: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-              <Globe size={16} color="var(--accent-violet)" />
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2d9ff' }}>
-                Available Trailer Languages:
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'nowrap' }}>
+              <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap' }}>
+                Official Trailer
               </span>
-            </div>
-
-            {trailers.length > 0 ? (
-              <div
-                ref={tabsContainerRef}
-                role="tablist"
-                aria-label="Trailer languages"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
+              {/* Single original-language indicator */}
+              <span
+                className="orig-lang-badge"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  color: '#4ade80',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
               >
-                {trailers.map((t, idx) => {
-                  const isActive = (t.lang === activeLang) || (!activeLang && idx === 0);
-                  return (
-                    <button
-                      key={t.lang}
-                      role="tab"
-                      aria-selected={isActive}
-                      tabIndex={isActive ? 0 : -1}
-                      onClick={() => handleSelectLanguage(t.lang)}
-                      onKeyDown={(e) => handleKeyDownTabs(e, idx)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 14px',
-                        borderRadius: 'var(--radius-pill)',
-                        fontSize: '0.82rem',
-                        fontWeight: isActive ? 600 : 500,
-                        cursor: 'pointer',
-                        border: isActive
-                          ? '1px solid var(--accent-violet)'
-                          : '1px solid rgba(255, 255, 255, 0.1)',
-                        background: isActive ? '#7c5cff' : 'rgba(255, 255, 255, 0.06)',
-                        color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                        boxShadow: isActive ? '0 0 12px var(--accent-violet-glow)' : 'none',
-                        transition: 'all 0.18s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                      }}
-                    >
-                      <span>{t.lang_name}</span>
-                      {t.is_original && (
-                        <span style={{
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
-                          letterSpacing: '0.04em',
-                          background: isActive ? 'rgba(0, 0, 0, 0.35)' : 'rgba(34, 197, 94, 0.25)',
-                          color: isActive ? '#ffffff' : '#4ade80',
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          textTransform: 'uppercase'
-                        }}>
-                          ORIGINAL
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                None found in TMDB
+                {origLangName} (Original Language)
               </span>
-            )}
+            </div>
           </div>
 
-          {/* Single language note if applicable */}
-          {trailers.length === 1 && (
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '12px', paddingLeft: '4px' }}>
-              Only the original-language trailer is available on TMDB.
-            </div>
-          )}
+          {/* 44px Close Button */}
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{
+              width: '44px',
+              height: '44px',
+              minWidth: '44px',
+              minHeight: '44px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-violet)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-          {/* 16:9 YouTube Player or Backdrop Screen */}
-          <div style={{
+        {/* 16:9 YouTube Player (EDGE TO EDGE on mobile portrait) */}
+        <div
+          ref={playerSectionRef}
+          className="modal-player-section"
+          style={isPlayerSticky && typeof window !== 'undefined' && window.innerWidth < 640 ? {
+            position: 'sticky',
+            top: '56px',
+            zIndex: 40,
+          } : {
             position: 'relative',
-            width: '100%',
-            aspectRatio: '16 / 9',
-            background: '#0a0a0f',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.7)'
-          }}>
+          }}
+        >
+          <div className="modal-player-box">
             {showTrailer && activeKey ? (
               <iframe
+                ref={iframeRef}
                 key={activeKey}
-                src={`https://www.youtube-nocookie.com/embed/${activeKey}?autoplay=${hasUserSwapped || autoPlayTrailer ? 1 : 0}&rel=0&modestbranding=1`}
+                src={`https://www.youtube-nocookie.com/embed/${activeKey}?autoplay=${hasUserSwapped || autoPlayTrailer ? 1 : 0}&rel=0&modestbranding=1&playsinline=1&fs=1`}
                 title={`${currentMovie.title} Trailer (${activeTrailer?.lang_name || 'Official'})`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowFullScreen
                 style={{
                   width: '100%',
                   height: '100%',
                   border: 'none',
+                  display: 'block',
                   opacity: isSwapping ? 0 : 1,
                   transition: 'opacity 0.2s ease-in-out'
                 }}
@@ -377,21 +304,21 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                         setHasUserSwapped(true);
                       }}
                       className="btn-primary"
-                      style={{ padding: '14px 28px', fontSize: '1rem' }}
+                      style={{ padding: '12px 24px', fontSize: '0.95rem', minHeight: '44px' }}
                     >
-                      <Play size={22} fill="#ffffff" color="#ffffff" />
+                      <Play size={20} fill="#ffffff" color="#ffffff" />
                       Play {activeTrailer?.lang_name || origLangName} Trailer
                     </button>
                   ) : (
                     <div style={{
-                      background: 'rgba(10, 10, 15, 0.88)',
-                      padding: '20px 28px',
+                      background: 'rgba(10, 10, 15, 0.9)',
+                      padding: '18px 24px',
                       borderRadius: '16px',
                       textAlign: 'center',
                       border: '1px solid rgba(255, 255, 255, 0.1)',
-                      maxWidth: '400px'
+                      maxWidth: '380px'
                     }}>
-                      <p style={{ color: 'var(--text-secondary)', marginBottom: '12px', fontSize: '0.92rem' }}>
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: '12px', fontSize: '0.88rem' }}>
                         Trailer not available on TMDB
                       </p>
                       <a
@@ -399,7 +326,7 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn-secondary"
-                        style={{ textDecoration: 'none', display: 'inline-flex', padding: '8px 18px', fontSize: '0.85rem' }}
+                        style={{ textDecoration: 'none', display: 'inline-flex', padding: '8px 18px', fontSize: '0.82rem', minHeight: '40px' }}
                       >
                         Search on YouTube <ExternalLink size={14} style={{ marginLeft: '4px' }} />
                       </a>
@@ -409,106 +336,239 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
               </>
             )}
           </div>
+        </div>
 
-          {/* Under-player Links: Open on YouTube */}
-          {activeKey && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', marginBottom: '8px' }}>
-              <a
-                href={openOnYoutubeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  color: 'var(--text-muted)',
-                  fontSize: '0.78rem',
-                  textDecoration: 'none',
-                  transition: 'color 0.2s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-              >
-                <span>Open on YouTube in new tab</span>
-                <ExternalLink size={12} />
-              </a>
+        {/* Player Toolbar: Fullscreen button + Open on YouTube link */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+          background: 'rgba(10, 10, 15, 0.6)',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
+          {activeKey ? (
+            <button
+              onClick={handleFullscreen}
+              aria-label="Play video fullscreen"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.16)',
+                color: '#ffffff',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                minHeight: '44px',
+                transition: 'all 0.18s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
+            >
+              <Maximize size={15} color="var(--accent-violet)" />
+              <span>Fullscreen</span>
+            </button>
+          ) : <div />}
+
+          {openOnYoutubeUrl && (
+            <a
+              href={openOnYoutubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                textDecoration: 'none',
+                minHeight: '44px',
+                padding: '6px 4px',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+            >
+              <span>Open on YouTube in new tab</span>
+              <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
+
+        {/* Rounded Bar: Available Trailer Languages Chips */}
+        <div style={{
+          padding: '12px 16px',
+          background: 'rgba(10, 10, 15, 0.75)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '8px',
+          }}>
+            <Globe size={16} color="var(--accent-violet)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2d9ff' }}>
+              Available Trailer Languages:
+            </span>
+          </div>
+
+          {trailers.length > 0 ? (
+            <div
+              ref={tabsContainerRef}
+              role="tablist"
+              aria-label="Trailer languages"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                overflowX: 'auto',
+                whiteSpace: 'nowrap',
+                padding: '4px 0 6px 0',
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'none',
+              }}
+            >
+              {trailers.map((t, idx) => {
+                const isActive = (t.lang === activeLang) || (!activeLang && idx === 0);
+                return (
+                  <button
+                    key={t.lang}
+                    role="tab"
+                    aria-selected={isActive}
+                    tabIndex={isActive ? 0 : -1}
+                    onClick={() => handleSelectLanguage(t.lang)}
+                    onKeyDown={(e) => handleKeyDownTabs(e, idx)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0 16px',
+                      minHeight: '40px',
+                      height: '40px',
+                      borderRadius: 'var(--radius-pill)',
+                      fontSize: '0.84rem',
+                      fontWeight: isActive ? 600 : 500,
+                      cursor: 'pointer',
+                      border: isActive
+                        ? '1px solid var(--accent-violet)'
+                        : '1px solid rgba(255, 255, 255, 0.12)',
+                      background: isActive ? '#7c5cff' : 'rgba(255, 255, 255, 0.06)',
+                      color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                      boxShadow: isActive ? '0 0 14px var(--accent-violet-glow)' : 'none',
+                      flexShrink: 0,
+                      transition: 'all 0.18s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                    }}
+                  >
+                    <span>{t.lang_name}</span>
+                    {t.is_original && (
+                      <span style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        background: isActive ? 'rgba(0, 0, 0, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+                        color: isActive ? '#ffffff' : '#4ade80',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase'
+                      }}>
+                        ORIGINAL
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              None found in TMDB
             </div>
           )}
         </div>
 
-        {/* Modal Body & Movie Metadata */}
-        <div style={{ padding: '24px 32px 32px 32px' }}>
-          {/* Title and Meta */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', marginBottom: '16px' }}>
-            <div>
-              <h2 className="cinematic-serif" style={{ fontSize: '1.9rem', fontWeight: 800, color: '#ffffff', marginBottom: '6px' }}>
-                {currentMovie.title}
-              </h2>
-              {currentMovie.original_title && currentMovie.original_title !== currentMovie.title && (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', fontStyle: 'italic', marginBottom: '6px' }}>
-                  Original: {currentMovie.original_title}
-                </p>
-              )}
-              {currentMovie.tagline && (
-                <p style={{ color: 'var(--accent-gold)', fontSize: '0.95rem', fontStyle: 'italic' }}>
-                  &ldquo;{currentMovie.tagline}&rdquo;
-                </p>
-              )}
-            </div>
+        {/* Movie Details (Title, Meta, Genres, Overview, Cast) */}
+        <div ref={detailsRef} style={{ padding: '20px clamp(16px, 3vw, 32px) 32px clamp(16px, 3vw, 32px)' }}>
+          {/* Title and Tagline */}
+          <div style={{ marginBottom: '14px' }}>
+            <h2 className="cinematic-serif" style={{ fontSize: 'clamp(1.5rem, 4vw, 2.1rem)', fontWeight: 800, color: '#ffffff', lineHeight: 1.2, marginBottom: '6px' }}>
+              {currentMovie.title}
+            </h2>
+            {currentMovie.original_title && currentMovie.original_title !== currentMovie.title && (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', fontStyle: 'italic', marginBottom: '4px' }}>
+                Original: {currentMovie.original_title}
+              </p>
+            )}
+            {currentMovie.tagline && (
+              <p style={{ color: 'var(--accent-gold)', fontSize: '0.92rem', fontStyle: 'italic' }}>
+                &ldquo;{currentMovie.tagline}&rdquo;
+              </p>
+            )}
+          </div>
 
-            {/* Quick badges */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Quick Badges Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+            <span style={{
+              background: 'rgba(124, 92, 255, 0.2)',
+              border: '1px solid var(--accent-violet)',
+              color: '#c4b5fd',
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: '0.76rem',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Globe2 size={12} />
+              {currentMovie.language_name}
+            </span>
+
+            {currentMovie.tmdb_rating > 0 && (
               <span style={{
-                background: 'rgba(124, 92, 255, 0.2)',
-                border: '1px solid var(--accent-violet)',
-                color: '#c4b5fd',
-                padding: '4px 10px',
+                background: 'rgba(245, 185, 66, 0.15)',
+                border: '1px solid rgba(245, 185, 66, 0.3)',
+                color: 'var(--accent-gold)',
+                padding: '3px 10px',
                 borderRadius: 'var(--radius-pill)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.76rem',
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px'
               }}>
-                <Globe2 size={12} />
-                {currentMovie.language_name}
+                <Star size={12} fill="var(--accent-gold)" color="var(--accent-gold)" />
+                {currentMovie.tmdb_rating.toFixed(1)} ({currentMovie.vote_count || 0} votes)
               </span>
-              {currentMovie.tmdb_rating > 0 && (
-                <span style={{
-                  background: 'rgba(245, 185, 66, 0.15)',
-                  border: '1px solid rgba(245, 185, 66, 0.3)',
-                  color: 'var(--accent-gold)',
-                  padding: '4px 10px',
-                  borderRadius: 'var(--radius-pill)',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <Star size={13} fill="var(--accent-gold)" color="var(--accent-gold)" />
-                  {currentMovie.tmdb_rating.toFixed(1)} ({currentMovie.vote_count || 0} votes)
-                </span>
-              )}
-            </div>
-          </div>
+            )}
 
-          {/* Meta specs row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '20px' }}>
             {currentMovie.year && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                <Calendar size={14} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                <Calendar size={13} />
                 {currentMovie.year}
               </span>
             )}
-            {currentMovie.runtime && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                <Clock size={14} />
+
+            {currentMovie.runtime > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                <Clock size={13} />
                 {Math.floor(currentMovie.runtime / 60)}h {currentMovie.runtime % 60}m
               </span>
             )}
+
             {currentMovie.director && (
-              <span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                 Director: <strong style={{ color: '#ffffff' }}>{currentMovie.director}</strong>
               </span>
             )}
@@ -516,15 +576,15 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
 
           {/* Genres */}
           {currentMovie.genres && currentMovie.genres.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
               {currentMovie.genres.map((g) => (
                 <span
                   key={g}
                   style={{
                     background: 'rgba(255, 255, 255, 0.06)',
-                    padding: '4px 12px',
+                    padding: '3px 10px',
                     borderRadius: 'var(--radius-pill)',
-                    fontSize: '0.78rem',
+                    fontSize: '0.75rem',
                     color: '#d1d5db',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                   }}
@@ -536,11 +596,11 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
           )}
 
           {/* Overview text */}
-          <div style={{ marginBottom: '28px' }}>
-            <h4 style={{ fontSize: '0.88rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+          <div style={{ marginBottom: '24px' }}>
+            <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', marginBottom: '8px' }}>
               Overview
             </h4>
-            <p style={{ color: '#d1d5db', fontSize: '0.95rem', lineHeight: 1.65 }}>
+            <p style={{ color: '#d1d5db', fontSize: '0.92rem', lineHeight: 1.6 }}>
               {currentMovie.overview || 'No synopsis available for this title.'}
             </p>
           </div>
@@ -548,22 +608,22 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
           {/* Top Cast */}
           {currentMovie.cast && currentMovie.cast.length > 0 && (
             <div>
-              <h4 style={{ fontSize: '0.88rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                 Top Cast
               </h4>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-                gap: '14px',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(95px, 1fr))',
+                gap: '12px',
               }}>
                 {currentMovie.cast.map((actor, idx) => (
                   <div key={idx} style={{ textAlign: 'center' }}>
                     <div style={{
-                      width: '68px',
-                      height: '68px',
+                      width: '60px',
+                      height: '60px',
                       borderRadius: '50%',
                       overflow: 'hidden',
-                      margin: '0 auto 8px auto',
+                      margin: '0 auto 6px auto',
                       background: '#1a1a26',
                       border: '2px solid rgba(124, 92, 255, 0.3)',
                       display: 'flex',
@@ -578,14 +638,14 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                           loading="lazy"
                         />
                       ) : (
-                        <User size={28} color="var(--text-secondary)" />
+                        <User size={24} color="var(--text-secondary)" />
                       )}
                     </div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {actor.name}
                     </div>
                     {actor.character && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {actor.character}
                       </div>
                     )}
@@ -597,13 +657,13 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
 
           {/* Keywords */}
           {currentMovie.keywords && currentMovie.keywords.length > 0 && (
-            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {currentMovie.keywords.map((kw, i) => (
                   <span
                     key={i}
                     style={{
-                      fontSize: '0.72rem',
+                      fontSize: '0.7rem',
                       color: 'var(--text-muted)',
                       background: 'rgba(255, 255, 255, 0.03)',
                       padding: '2px 8px',

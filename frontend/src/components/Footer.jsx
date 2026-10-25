@@ -4,9 +4,9 @@ import { Clapperboard } from 'lucide-react';
 export default function Footer() {
   return (
     <footer style={{
-      marginTop: '80px',
+      marginTop: 'clamp(40px, 6vw, 80px)',
       borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-      padding: '48px 24px 36px 24px',
+      padding: 'clamp(32px, 5vw, 48px) 16px clamp(24px, 4vw, 36px) 16px',
       background: 'rgba(10, 10, 15, 0.95)',
       textAlign: 'center',
     }}>

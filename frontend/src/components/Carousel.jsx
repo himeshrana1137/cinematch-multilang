@@ -19,31 +19,50 @@ export default function Carousel({ title, subtitle, icon: Icon, movies, onSelect
   if (!movies || movies.length === 0) return null;
 
   return (
-    <div style={{ marginBottom: '40px', position: 'relative' }}>
-      {/* Carousel Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '14px', padding: '0 4px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-            {Icon && <Icon size={20} color="var(--accent-violet)" />}
-            <h2 className="cinematic-serif" style={{ fontSize: '1.45rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
+    <div style={{ marginBottom: '32px', position: 'relative' }}>
+      {/* Carousel Header: icon aligned to first line of wrapped heading */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: '12px',
+        marginBottom: '10px',
+        padding: '0 2px'
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '3px' }}>
+            {Icon && <Icon size={20} color="var(--accent-violet)" style={{ flexShrink: 0, marginTop: '3px' }} />}
+            <h2 className="cinematic-serif" style={{
+              fontSize: 'clamp(20px, 5vw, 25px)',
+              fontWeight: 700,
+              color: '#ffffff',
+              letterSpacing: '-0.01em',
+              lineHeight: 1.25,
+              wordBreak: 'break-word',
+            }}>
               {title}
             </h2>
           </div>
           {subtitle && (
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            <p style={{
+              fontSize: '0.8rem',
+              color: 'var(--text-secondary)',
+              paddingLeft: Icon ? '28px' : '0',
+              lineHeight: 1.35,
+            }}>
               {subtitle}
             </p>
           )}
         </div>
 
         {/* Scroll Buttons */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginTop: '2px' }}>
           <button
             onClick={() => scroll('left')}
             aria-label="Scroll left"
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
               borderRadius: '50%',
               background: 'rgba(255, 255, 255, 0.08)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -63,8 +82,8 @@ export default function Carousel({ title, subtitle, icon: Icon, movies, onSelect
             onClick={() => scroll('right')}
             aria-label="Scroll right"
             style={{
-              width: '36px',
-              height: '36px',
+              width: '38px',
+              height: '38px',
               borderRadius: '50%',
               background: 'rgba(255, 255, 255, 0.08)',
               border: '1px solid rgba(255, 255, 255, 0.1)',

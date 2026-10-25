@@ -1,8 +1,17 @@
 import os
 import json
-import math
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+ALLOWED_LANGUAGES = {
+    "en": "Hollywood",
+    "hi": "Bollywood/Hindi",
+    "gu": "Gujarati",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "ml": "Malayalam",
+    "kn": "Kannada"
+}
 
 
 class MovieRecommender:
@@ -26,14 +35,19 @@ class MovieRecommender:
             return
 
         with open(self.data_path, "r", encoding="utf-8") as f:
-            self.movies = json.load(f)
+            raw_movies = json.load(f)
 
-        if not self.movies:
+        if not raw_movies:
             return
+
+        # Filter strictly to allowed languages (removing bn, mr, pa)
+        self.movies = [
+            m for m in raw_movies
+            if m and m.get("language") in ALLOWED_LANGUAGES
+        ]
 
         print(f"Loaded {len(self.movies)} movies into Recommender.")
 
-        # Indexing and language counts
         self.movie_map = {}
         self.id_to_idx = {}
         self.language_counts = {}
@@ -59,19 +73,19 @@ class MovieRecommender:
             # - overview text
             genres = m.get("genres", [])
             genres_text = (" ".join([g.replace(" ", "_") for g in genres]) + " ") * 3
-            
+
             keywords = m.get("keywords", [])
             keywords_text = (" ".join([k.replace(" ", "_") for k in keywords]) + " ") * 2
-            
+
             director = m.get("director") or ""
             director_text = (director.replace(" ", "_") + " ") if director else ""
-            
+
             cast = m.get("cast", [])
             cast_names = [c.get("name", "").replace(" ", "_") for c in cast[:4] if c.get("name")]
             cast_text = " ".join(cast_names) + " "
-            
+
             overview = m.get("overview") or ""
-            
+
             doc = f"{genres_text} {keywords_text} {director_text} {cast_text} {overview}".lower()
             corpus.append(doc)
 
@@ -97,7 +111,6 @@ class MovieRecommender:
         # Mean vote average
         valid_votes = v_arr > 0
         c_mean = float(np.mean(r_arr[valid_votes])) if np.any(valid_votes) else 6.0
-        # Quantile threshold m (e.g. 35th percentile or min 5)
         m_val = float(np.percentile(v_arr[v_arr > 0], 35)) if np.any(v_arr > 0) else 5.0
         m_val = max(m_val, 5.0)
 
@@ -147,28 +160,19 @@ class MovieRecommender:
         }
 
     def get_languages(self):
-        # Return [{code, name, count}]
-        # Sort by predefined order or count
+        # Return [{code, name, count}] in standard order
+        order = ["en", "hi", "gu", "ta", "te", "ml", "kn"]
         result = []
-        for m in self.movies:
-            code = m.get("language", "")
-            name = m.get("language_name", code)
-            found = False
-            for item in result:
-                if item["code"] == code:
-                    found = True
-                    break
-            if not found:
-                count = self.language_counts.get(code, 0)
-                result.append({"code": code, "name": name, "count": count})
-        # Sort descending by count
-        result.sort(key=lambda x: x["count"], reverse=True)
+        for code in order:
+            name = ALLOWED_LANGUAGES.get(code, code)
+            count = self.language_counts.get(code, 0)
+            result.append({"code": code, "name": name, "count": count})
         return result
 
     def search(self, query="", languages=None, limit=20):
         if not query or not self.movies:
             return []
-        
+
         q = query.strip().lower()
         lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
 
@@ -176,14 +180,13 @@ class MovieRecommender:
         for idx, m in enumerate(self.movies):
             if lang_set and m.get("language", "").lower() not in lang_set:
                 continue
-            
+
             title = (m.get("title") or "").lower()
             orig_title = (m.get("original_title") or "").lower()
-            
+
             if q in title or q in orig_title:
                 matches.append((idx, m))
 
-        # Rank search results: exact starts-with first, then by quality score
         def search_rank(item):
             idx, m = item
             t = (m.get("title") or "").lower()
@@ -207,11 +210,12 @@ class MovieRecommender:
             q_score = float(self.quality_scores[idx])
             candidates.append((idx, m, q_score))
 
-        # Sort by quality score descending
+        # Ordered strictly by quality score descending
         candidates.sort(key=lambda x: x[2], reverse=True)
         return [self.format_card(m) for _, m, _ in candidates[:n]]
 
     def recommend(self, movie_id, languages=None, n=12, alpha=0.7):
+        # Fixed blend default 0.7 content + 0.3 quality
         if not self.movies or self.tfidf_matrix is None:
             return []
 
@@ -221,21 +225,17 @@ class MovieRecommender:
             return []
 
         if mid not in self.id_to_idx:
-            # If movie not found, fallback to popular
             return self.get_popular(languages=languages, n=n)
 
         target_idx = self.id_to_idx[mid]
         target_movie = self.movies[target_idx]
         target_lang = target_movie.get("language", "")
 
-        # Compute on-demand TF-IDF cosine similarity:
-        # dot product between all movie vectors and the target movie vector
         target_vec = self.tfidf_matrix[target_idx]
         sims = self.tfidf_matrix.dot(target_vec.T).toarray().ravel()
 
         lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
 
-        # Build candidate list excluding the target movie itself
         candidate_indices = []
         candidate_content = []
         candidate_quality = []
@@ -263,25 +263,31 @@ class MovieRecommender:
         else:
             c_norm = np.zeros_like(c_arr)
 
-        # Combine with quality score using alpha
-        alpha = max(0.0, min(1.0, float(alpha)))
-        hybrid = alpha * c_norm + (1.0 - alpha) * q_arr
+        # Min-max normalize quality scores
+        q_min, q_max = np.min(q_arr), np.max(q_arr)
+        if q_max > q_min:
+            q_norm = (q_arr - q_min) / (q_max - q_min + 1e-6)
+        else:
+            q_norm = q_arr
 
-        # Small same-language bonus when no language filter is selected
+        # Fixed blend: 0.7 * content + 0.3 * quality (alpha defaults to 0.7)
+        alpha = max(0.0, min(1.0, float(alpha)))
+        hybrid = alpha * c_norm + (1.0 - alpha) * q_norm
+
+        # Same-language bonus when no language filter is specified
         if not lang_set:
             for i, idx in enumerate(candidate_indices):
                 if self.movies[idx].get("language", "") == target_lang:
                     hybrid[i] += 0.05
 
-        # Normalize final scores to match percentage (between 65% and 99% for top picks)
+        # Normalize final score to match percentage (65% to 99%)
         h_min, h_max = np.min(hybrid), np.max(hybrid)
         if h_max > h_min:
             scaled = (hybrid - h_min) / (h_max - h_min + 1e-6)
-            match_percentages = 65 + (scaled * 34)  # 65% to 99%
+            match_percentages = 65 + (scaled * 34)
         else:
             match_percentages = np.full_like(hybrid, 80.0)
 
-        # Sort candidates by hybrid score descending
         sorted_order = np.argsort(-hybrid)
 
         results = []

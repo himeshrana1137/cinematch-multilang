@@ -1,92 +1,107 @@
-import React from 'react';
-import { Globe, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { Globe, Info } from 'lucide-react';
 
-export const LANGUAGES = [
-  { code: 'all', label: 'All Languages' },
-  { code: 'en', label: 'Hollywood' },
-  { code: 'hi', label: 'Bollywood/Hindi' },
-  { code: 'gu', label: 'Gujarati' },
-  { code: 'ta', label: 'Tamil' },
-  { code: 'te', label: 'Telugu' },
-  { code: 'ml', label: 'Malayalam' },
-  { code: 'pa', label: 'Punjabi' },
-  { code: 'kn', label: 'Kannada' },
-  { code: 'mr', label: 'Marathi' },
-  { code: 'bn', label: 'Bengali' },
+export const CHIPS = [
+  { id: 'all', label: 'All', queryValue: '' },
+  { id: 'en', label: 'Hollywood', queryValue: 'en' },
+  { id: 'hi', label: 'Bollywood/Hindi', queryValue: 'hi' },
+  { id: 'gu', label: 'Gujarati', queryValue: 'gu' },
+  { id: 'south_indian', label: 'South Indian', queryValue: 'ta,te,ml,kn' },
+  { id: 'ta', label: 'Tamil', queryValue: 'ta' },
+  { id: 'te', label: 'Telugu', queryValue: 'te' },
+  { id: 'ml', label: 'Malayalam', queryValue: 'ml' },
+  { id: 'kn', label: 'Kannada', queryValue: 'kn' },
 ];
 
-export default function LanguageSelector({ selectedLanguages, onToggleLanguage, onSelectAll }) {
-  const isAll = selectedLanguages.length === 0 || selectedLanguages.includes('all');
+export default function LanguageSelector({ activeChipId, onSelectChip }) {
+  const [showTooltip, setShowTooltip] = useState(false);
 
   return (
     <div style={{ width: '100%', marginBottom: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-          <Globe size={16} color="var(--accent-violet)" />
-          <span>Filter by Language / Industry</span>
-        </div>
-        {!isAll && (
-          <button
-            onClick={onSelectAll}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--accent-gold)',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              transition: 'opacity 0.2s'
-            }}
-          >
-            Reset to All
-          </button>
-        )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '10px' }}>
+        <Globe size={16} color="var(--accent-violet)" />
+        <span>Filter by Cinema / Industry</span>
       </div>
 
-      <div className="chips-scroll-container">
-        {LANGUAGES.map((lang) => {
-          const isSelected = lang.code === 'all'
-            ? isAll
-            : !isAll && selectedLanguages.includes(lang.code);
+      {/* Single-select Pill Chips */}
+      <div className="chips-scroll-container" style={{ marginBottom: '10px' }}>
+        {CHIPS.map((chip) => {
+          const isActive = chip.id === activeChipId;
 
           return (
             <button
-              key={lang.code}
-              onClick={() => {
-                if (lang.code === 'all') {
-                  onSelectAll();
-                } else {
-                  onToggleLanguage(lang.code);
-                }
-              }}
+              key={chip.id}
+              onClick={() => onSelectChip(chip.id)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '8px 18px',
+                padding: '8px 20px',
                 borderRadius: 'var(--radius-pill)',
                 fontSize: '0.88rem',
-                fontWeight: isSelected ? 600 : 500,
+                fontWeight: isActive ? 600 : 500,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                border: isSelected
+                border: isActive
                   ? '1px solid var(--accent-violet)'
                   : '1px solid rgba(255, 255, 255, 0.1)',
-                background: isSelected
-                  ? 'linear-gradient(135deg, rgba(124, 92, 255, 0.25) 0%, rgba(124, 92, 255, 0.12) 100%)'
+                background: isActive
+                  ? 'linear-gradient(135deg, rgba(124, 92, 255, 0.3) 0%, rgba(124, 92, 255, 0.15) 100%)'
                   : 'rgba(255, 255, 255, 0.04)',
-                color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                boxShadow: isSelected ? '0 0 16px var(--accent-violet-glow)' : 'none',
+                color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                boxShadow: isActive ? '0 0 16px var(--accent-violet-glow)' : 'none',
               }}
             >
-              {isSelected && <Check size={14} color="var(--accent-gold)" />}
-              <span>{lang.label}</span>
+              <span>{chip.label}</span>
             </button>
           );
         })}
+      </div>
+
+      {/* Small Tasteful Info Line */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--text-muted)', position: 'relative' }}>
+        <span>Hybrid recommendations: 70% similarity (story, cast, genre) + 30% rating and popularity</span>
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+          <button
+            onClick={() => setShowTooltip(!showTooltip)}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            aria-label="Information on hybrid recommendations"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '2px',
+            }}
+          >
+            <Info size={14} color="var(--accent-violet)" />
+          </button>
+
+          {showTooltip && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '290px',
+              background: '#151520',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              fontSize: '0.78rem',
+              lineHeight: 1.45,
+              color: '#d1d5db',
+              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.9)',
+              zIndex: 70,
+              pointerEvents: 'none',
+            }}>
+              CineMatch blends plot, cast, and genre TF-IDF matching with Bayesian IMDb quality ratings and popularity. This ensures you discover contextually relevant recommendations without sacrificing film quality.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

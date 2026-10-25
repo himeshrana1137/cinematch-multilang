@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Film, X, Clapperboard } from 'lucide-react';
 
-export default function Navbar({ onSelectMovie, activeLanguages }) {
+export default function Navbar({ onSelectMovie, activeQueryValue }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,9 +22,7 @@ export default function Navbar({ onSelectMovie, activeLanguages }) {
     setLoading(true);
     const handler = setTimeout(async () => {
       try {
-        const langParam = activeLanguages && activeLanguages.length > 0 && !activeLanguages.includes('all')
-          ? `&languages=${activeLanguages.join(',')}`
-          : '';
+        const langParam = activeQueryValue ? `&languages=${activeQueryValue}` : '';
         const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}${langParam}&limit=8`);
         if (res.ok) {
           const data = await res.json();
@@ -40,7 +38,7 @@ export default function Navbar({ onSelectMovie, activeLanguages }) {
     }, 300);
 
     return () => clearTimeout(handler);
-  }, [query, activeLanguages]);
+  }, [query, activeQueryValue]);
 
   // Handle outside click
   useEffect(() => {
@@ -82,7 +80,7 @@ export default function Navbar({ onSelectMovie, activeLanguages }) {
   };
 
   return (
-    <nav className="glass-nav" style={{ padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px' }}>
+    <nav className="glass-nav" style={{ padding: '14px clamp(16px, 3vw, 28px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px' }}>
       {/* Brand Logo */}
       <div
         style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}
@@ -126,7 +124,7 @@ export default function Navbar({ onSelectMovie, activeLanguages }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search movies, titles, languages..."
+            placeholder="Search movies, titles..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}

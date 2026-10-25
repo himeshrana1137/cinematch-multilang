@@ -1,38 +1,38 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Navbar from './components/Navbar';
-import LanguageSelector, { LANGUAGES } from './components/LanguageSelector';
+import LanguageSelector, { CHIPS } from './components/LanguageSelector';
 import Hero from './components/Hero';
 import Carousel from './components/Carousel';
-import HybridControl from './components/HybridControl';
 import DetailModal from './components/DetailModal';
 import { CardSkeleton, CarouselSkeleton, HeroSkeleton } from './components/SkeletonLoader';
 import ErrorBanner from './components/ErrorBanner';
 import Footer from './components/Footer';
-import { Sparkles, TrendingUp, Compass, Film } from 'lucide-react';
+import { Sparkles, TrendingUp } from 'lucide-react';
 
-const STORAGE_KEY = 'cinematch_selected_languages';
+const STORAGE_KEY = 'cinematch_active_chip';
 
-function getInitialLanguages() {
+function getInitialChip() {
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlChip = urlParams.get('cinema') || urlParams.get('lang');
+    if (urlChip && CHIPS.some((c) => c.id === urlChip)) {
+      return urlChip;
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
+    if (saved && CHIPS.some((c) => c.id === saved)) {
+      return saved;
     }
   } catch (e) {
-    console.warn('Could not read from localStorage:', e);
+    console.warn('Could not read active chip from localStorage:', e);
   }
-  return ['all'];
+  return 'all';
 }
 
 export default function App() {
-  const [selectedLanguages, setSelectedLanguages] = useState(getInitialLanguages);
+  const [activeChipId, setActiveChipId] = useState(getInitialChip);
   const [heroMovie, setHeroMovie] = useState(null);
   const [popularMovies, setPopularMovies] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
-  const [alpha, setAlpha] = useState(0.7);
 
   const [loadingPopular, setLoadingPopular] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(false);
@@ -44,72 +44,57 @@ export default function App() {
 
   const recsSectionRef = useRef(null);
 
-  // Save languages to localStorage
-  const saveLanguages = (langs) => {
-    setSelectedLanguages(langs);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(langs));
-    } catch (e) {
-      console.warn('Could not save to localStorage:', e);
-    }
-  };
-
-  const handleToggleLanguage = (code) => {
-    let next;
-    if (selectedLanguages.includes('all')) {
-      next = [code];
-    } else if (selectedLanguages.includes(code)) {
-      next = selectedLanguages.filter((c) => c !== code);
-      if (next.length === 0) next = ['all'];
-    } else {
-      next = [...selectedLanguages, code];
-    }
-    saveLanguages(next);
-  };
-
-  const handleSelectAll = () => {
-    saveLanguages(['all']);
-  };
+  // Active chip object
+  const activeChip = CHIPS.find((c) => c.id === activeChipId) || CHIPS[0];
 
   // Helper to build languages query string
   const getLangQuery = useCallback(() => {
-    if (!selectedLanguages || selectedLanguages.length === 0 || selectedLanguages.includes('all')) {
-      return '';
-    }
-    return `&languages=${selectedLanguages.join(',')}`;
-  }, [selectedLanguages]);
+    if (!activeChip.queryValue) return '';
+    return `&languages=${activeChip.queryValue}`;
+  }, [activeChip.queryValue]);
 
-  // Fetch Popular movies
+  // Handle single-select chip change
+  const handleSelectChip = (chipId) => {
+    if (chipId === activeChipId) return; // Already active
+
+    setActiveChipId(chipId);
+    try {
+      localStorage.setItem(STORAGE_KEY, chipId);
+    } catch (e) {
+      console.warn('Could not save active chip to localStorage:', e);
+    }
+  };
+
+  // Fetch Popular movies and update Hero
   const fetchPopular = useCallback(async () => {
     setLoadingPopular(true);
     setError(null);
     try {
-      const query = getLangQuery();
-      const res = await fetch(`/api/popular?n=18${query}`);
+      const langParam = getLangQuery();
+      const res = await fetch(`/api/popular?n=18${langParam}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPopularMovies(data);
 
-      // If no hero movie currently or if hero is not in active language set, set hero
-      setHeroMovie((prev) => {
-        if (!prev && data.length > 0) return data[0];
-        return prev || (data.length > 0 ? data[0] : null);
-      });
+      // Hero must switch to a movie from that language/selection
+      if (data.length > 0) {
+        setHeroMovie(data[0]);
+      }
     } catch (err) {
       console.error('Failed to load popular movies:', err);
-      setError('Failed to fetch movies. Please verify connection and retry.');
+      setError('Failed to fetch movies. Please check connection and retry.');
     } finally {
       setLoadingPopular(false);
     }
   }, [getLangQuery]);
 
-  // Fetch Recommendations for a target movie
-  const fetchRecommendations = useCallback(async (targetMovie, currentAlpha = alpha) => {
+  // Fetch Recommendations (fixed 70/30 blend on backend, no alpha parameter sent)
+  const fetchRecommendations = useCallback(async (targetMovie) => {
     if (!targetMovie?.id) return;
     setLoadingRecs(true);
     try {
-      const query = getLangQuery();
-      const res = await fetch(`/api/recommend?movie_id=${targetMovie.id}&n=18&alpha=${currentAlpha}${query}`);
+      const langParam = getLangQuery();
+      const res = await fetch(`/api/recommend?movie_id=${targetMovie.id}&n=18${langParam}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRecommendations(data);
@@ -118,34 +103,25 @@ export default function App() {
     } finally {
       setLoadingRecs(false);
     }
-  }, [alpha, getLangQuery]);
+  }, [getLangQuery]);
 
-  // When languages change, refresh Popular and Recommendations
+  // When activeChip changes, refresh Popular (which updates Hero)
   useEffect(() => {
     fetchPopular();
   }, [fetchPopular]);
 
-  // When heroMovie changes, fetch its recommendations
+  // When heroMovie changes, fetch recommendations for it
   useEffect(() => {
     if (heroMovie?.id) {
-      fetchRecommendations(heroMovie, alpha);
+      fetchRecommendations(heroMovie);
     }
   }, [heroMovie?.id, fetchRecommendations]);
 
-  // Handle selecting a movie (from search, card click, etc.)
+  // Handle clicking a card
   const handleSelectMovie = (movie) => {
     setHeroMovie(movie);
-    fetchRecommendations(movie, alpha);
-    // Smooth scroll to top of hero
+    fetchRecommendations(movie);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Handle hybrid slider change (alpha)
-  const handleAlphaChange = (newAlpha) => {
-    setAlpha(newAlpha);
-    if (heroMovie?.id) {
-      fetchRecommendations(heroMovie, newAlpha);
-    }
   };
 
   const handleOpenTrailer = (movie) => {
@@ -167,28 +143,22 @@ export default function App() {
     recsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Language section subtitle
-  const languageNames = selectedLanguages.includes('all')
-    ? 'All Cinema'
-    : selectedLanguages
-        .map((c) => LANGUAGES.find((l) => l.code === c)?.label || c)
-        .join(', ');
+  const currentCinemaLabel = activeChip.label === 'All' ? 'All Cinema' : activeChip.label;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
-      {/* Sticky Glass Navbar */}
-      <Navbar onSelectMovie={handleSelectMovie} activeLanguages={selectedLanguages} />
+      {/* Sticky Glass Navbar with search */}
+      <Navbar onSelectMovie={handleSelectMovie} activeQueryValue={activeChip.queryValue} />
 
       {/* Main Container */}
       <main style={{ flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', padding: '24px 24px 0 24px' }}>
         {/* Error Banner */}
         {error && <ErrorBanner message={error} onRetry={fetchPopular} />}
 
-        {/* Multi-language Selector Chips */}
+        {/* Single-select Language Chips & Info Line */}
         <LanguageSelector
-          selectedLanguages={selectedLanguages}
-          onToggleLanguage={handleToggleLanguage}
-          onSelectAll={handleSelectAll}
+          activeChipId={activeChipId}
+          onSelectChip={handleSelectChip}
         />
 
         {/* Hero Section */}
@@ -204,14 +174,6 @@ export default function App() {
           )
         )}
 
-        {/* Hybrid Recommendation Balance Control */}
-        {heroMovie && (
-          <HybridControl
-            alpha={alpha}
-            onAlphaChange={handleAlphaChange}
-          />
-        )}
-
         {/* Recommendations Section */}
         <div ref={recsSectionRef}>
           {loadingRecs ? (
@@ -220,7 +182,7 @@ export default function App() {
             recommendations.length > 0 && (
               <Carousel
                 title={`Because you picked ${heroMovie?.title}`}
-                subtitle={`Hybrid content & quality matches in ${languageNames}`}
+                subtitle={`Hybrid content & quality matches in ${currentCinemaLabel}`}
                 icon={Sparkles}
                 movies={recommendations}
                 onSelectMovie={handleSelectMovie}
@@ -237,8 +199,8 @@ export default function App() {
         ) : (
           popularMovies.length > 0 && (
             <Carousel
-              title={`Popular in ${languageNames}`}
-              subtitle="Top rated and trending titles calculated via Bayesian quality scoring"
+              title={`Popular in ${currentCinemaLabel}`}
+              subtitle="Top rated and trending titles ordered by Bayesian quality score"
               icon={TrendingUp}
               movies={popularMovies}
               onSelectMovie={handleSelectMovie}

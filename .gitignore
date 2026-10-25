@@ -29,3 +29,4 @@ Thumbs.db
 !frontend/dist/**
 !backend/data/movies.json
 !backend/data/tmdb_cache.json
+!backend/data/videos_cache.json

@@ -140,6 +140,7 @@ class MovieRecommender:
     def format_card(self, movie, match_percent=None):
         if not movie:
             return None
+        default_key = movie.get("default_trailer_key") or movie.get("trailer_key")
         return {
             "id": movie["id"],
             "title": movie.get("title", ""),
@@ -155,7 +156,8 @@ class MovieRecommender:
             "runtime": movie.get("runtime"),
             "tmdb_rating": movie.get("vote_average", 0.0),
             "vote_count": movie.get("vote_count", 0),
-            "trailer_key": movie.get("trailer_key"),
+            "default_trailer_key": default_key,
+            "trailer_key": default_key,
             "match_percent": match_percent
         }
 

@@ -13,6 +13,8 @@ desktop_png = os.path.abspath("screenshots/desktop.png")
 mobile_png = os.path.abspath("screenshots/mobile.png")
 gujarati_png = os.path.abspath("screenshots/desktop_gujarati.png")
 south_indian_png = os.path.abspath("screenshots/desktop_south_indian.png")
+rrr_modal_png = os.path.abspath("screenshots/desktop_rrr_modal.png")
+rrr_mobile_png = os.path.abspath("screenshots/mobile_rrr_modal.png")
 
 browser_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
@@ -40,61 +42,51 @@ try:
             pass
 
     time.sleep(2)
-    print("Server ready. Taking desktop screenshot (All)...")
-    desk_cmd = [
-        browser_exe,
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--window-size=1440,1200",
-        "--virtual-time-budget=6000",
-        f"--screenshot={desktop_png}",
-        f"http://127.0.0.1:{port}/"
-    ]
-    subprocess.run(desk_cmd, check=True)
-    print(f"Desktop screenshot saved to {desktop_png} ({os.path.getsize(desktop_png)} bytes)")
+    print("Server ready. Capturing screenshots...")
 
-    print("Taking mobile screenshot...")
-    mob_cmd = [
-        browser_exe,
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--window-size=390,950",
-        "--virtual-time-budget=6000",
-        f"--screenshot={mobile_png}",
-        f"http://127.0.0.1:{port}/"
-    ]
-    subprocess.run(mob_cmd, check=True)
-    print(f"Mobile screenshot saved to {mobile_png} ({os.path.getsize(mobile_png)} bytes)")
+    # 1. Desktop All
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=1440,1200", "--virtual-time-budget=6000",
+        f"--screenshot={desktop_png}", f"http://127.0.0.1:{port}/"
+    ], check=True)
 
-    print("Taking Gujarati cinema screenshot...")
-    gu_cmd = [
-        browser_exe,
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--window-size=1440,1200",
-        "--virtual-time-budget=6000",
-        f"--screenshot={gujarati_png}",
-        f"http://127.0.0.1:{port}/?cinema=gu"
-    ]
-    subprocess.run(gu_cmd, check=True)
-    print(f"Gujarati screenshot saved to {gujarati_png} ({os.path.getsize(gujarati_png)} bytes)")
+    # 2. Mobile All
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=390,950", "--virtual-time-budget=6000",
+        f"--screenshot={mobile_png}", f"http://127.0.0.1:{port}/"
+    ], check=True)
 
-    print("Taking South Indian cinema screenshot...")
-    si_cmd = [
-        browser_exe,
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--window-size=1440,1200",
-        "--virtual-time-budget=6000",
-        f"--screenshot={south_indian_png}",
-        f"http://127.0.0.1:{port}/?cinema=south_indian"
-    ]
-    subprocess.run(si_cmd, check=True)
-    print(f"South Indian screenshot saved to {south_indian_png} ({os.path.getsize(south_indian_png)} bytes)")
+    # 3. Gujarati Cinema
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=1440,1200", "--virtual-time-budget=6000",
+        f"--screenshot={gujarati_png}", f"http://127.0.0.1:{port}/?cinema=gu"
+    ], check=True)
+
+    # 4. South Indian Cinema
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=1440,1200", "--virtual-time-budget=6000",
+        f"--screenshot={south_indian_png}", f"http://127.0.0.1:{port}/?cinema=south_indian"
+    ], check=True)
+
+    # 5. RRR Multi-language Trailer Modal Desktop
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=1440,1200", "--virtual-time-budget=6000",
+        f"--screenshot={rrr_modal_png}", f"http://127.0.0.1:{port}/?movie=579974"
+    ], check=True)
+
+    # 6. RRR Multi-language Trailer Modal Mobile
+    subprocess.run([
+        browser_exe, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        "--window-size=390,950", "--virtual-time-budget=6000",
+        f"--screenshot={rrr_mobile_png}", f"http://127.0.0.1:{port}/?movie=579974"
+    ], check=True)
+
+    print("All screenshots successfully captured!")
 
 finally:
     print("Shutting down server...")

@@ -124,13 +124,16 @@ def get_movie_detail(movie_id):
     if not movie:
         return jsonify({"error": "Not Found", "message": f"Movie with ID {movie_id} not found"}), 404
 
-    # Return full detail card with cast and trailer_key
+    # Return full detail card with cast, trailer_key, trailers list, and language info
     card = recommender.format_card(movie)
     card["cast"] = movie.get("cast", [])
     card["director"] = movie.get("director")
     card["keywords"] = movie.get("keywords", [])
     card["vote_count"] = movie.get("vote_count", 0)
     card["popularity"] = movie.get("popularity", 0.0)
+    card["trailers"] = movie.get("trailers", [])
+    card["default_trailer_key"] = movie.get("default_trailer_key") or movie.get("trailer_key")
+    card["original_language_name"] = movie.get("original_language_name") or movie.get("language_name")
     return jsonify(card)
 
 

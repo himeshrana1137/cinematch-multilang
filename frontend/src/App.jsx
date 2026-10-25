@@ -110,6 +110,23 @@ export default function App() {
     fetchPopular();
   }, [fetchPopular]);
 
+  // Support direct modal opening via ?movie=<id>
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const movieIdParam = urlParams.get('movie');
+    if (movieIdParam) {
+      fetch(`/api/movie/${movieIdParam}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((m) => {
+          if (m) {
+            setModalMovie(m);
+            setModalPlayTrailer(true);
+          }
+        })
+        .catch((err) => console.error('Error opening movie from query param:', err));
+    }
+  }, []);
+
   // When heroMovie changes, fetch recommendations for it
   useEffect(() => {
     if (heroMovie?.id) {

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BACKEND_DIR, "data")
 CACHE_FILE = os.path.join(DATA_DIR, "tmdb_cache.json")
+VIDEOS_CACHE_FILE = os.path.join(DATA_DIR, "videos_cache.json")
 OUTPUT_FILE = os.path.join(DATA_DIR, "movies.json")
 
 # Load environment variables
@@ -22,17 +23,25 @@ if not TMDB_API_KEY or TMDB_API_KEY == "your_key_here":
 
 BASE_URL = "https://api.themoviedb.org/3"
 
-# Final languages: en (Hollywood), hi (Bollywood/Hindi), gu (Gujarati),
-# ta (Tamil), te (Telugu), ml (Malayalam), kn (Kannada).
-# Removed completely: bn, mr, pa.
+# Final 7 languages
 LANG_CONFIG = {
     "en": {"name": "Hollywood", "min_vote": 50, "pages": 30},
-    "hi": {"name": "Bollywood/Hindi", "min_vote": 50, "pages": 40}, # Handled with dual sort
+    "hi": {"name": "Bollywood/Hindi", "min_vote": 50, "pages": 40},
     "ta": {"name": "Tamil", "min_vote": 10, "pages": 25},
     "te": {"name": "Telugu", "min_vote": 10, "pages": 25},
     "ml": {"name": "Malayalam", "min_vote": 10, "pages": 25},
     "kn": {"name": "Kannada", "min_vote": 5, "pages": 15},
-    "gu": {"name": "Gujarati", "min_vote": 0}, # Handled exhaustively
+    "gu": {"name": "Gujarati", "min_vote": 0},
+}
+
+VIDEO_LANG_NAMES = {
+    "en": "English",
+    "hi": "Hindi",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "ml": "Malayalam",
+    "kn": "Kannada",
+    "gu": "Gujarati",
 }
 
 GUJARATI_SEEDS = [
@@ -88,20 +97,16 @@ def fetch_standard_language_ids(lang_code, config):
                 movie_ids.append((mid, lang_code))
         if page >= data.get("total_pages", 1):
             break
-        time.sleep(0.04)
+        time.sleep(0.03)
 
     print(f"  Found {len(movie_ids)} IDs for {lang_code}.")
     return movie_ids
 
 
 def fetch_hindi_ids():
-    # MORE HINDI: for hi (vote_count.gte=50) run /discover/movie with
-    # sort_by=popularity.desc for 40 pages AND sort_by=vote_count.desc for 40 pages,
-    # then dedupe by id (target 1,200+ unique movies).
     print("Discovering Bollywood/Hindi (hi) movies (target 1,200+ unique)...")
     hindi_ids = set()
 
-    # Pass 1: popularity.desc (40 pages, vote_count.gte=50)
     for page in range(1, 41):
         params = {
             "api_key": TMDB_API_KEY,
@@ -124,9 +129,6 @@ def fetch_hindi_ids():
             break
         time.sleep(0.03)
 
-    print(f"  Hindi vote_count.gte=50 popularity pass: {len(hindi_ids)} unique IDs.")
-
-    # Pass 2: vote_count.desc (40 pages, vote_count.gte=50)
     for page in range(1, 41):
         params = {
             "api_key": TMDB_API_KEY,
@@ -149,12 +151,7 @@ def fetch_hindi_ids():
             break
         time.sleep(0.03)
 
-    print(f"  Hindi vote_count.gte=50 vote_count pass: {len(hindi_ids)} unique IDs.")
-
-    # Target 1,200+ unique movies: If TMDB has fewer than 1,200 movies with vote_count.gte=50,
-    # supplement with vote_count.gte=15 to reach the 1,200+ target.
     if len(hindi_ids) < 1200:
-        print(f"  Supplementing to reach target 1,200+ unique Hindi movies (currently {len(hindi_ids)})...")
         for page in range(1, 75):
             params = {
                 "api_key": TMDB_API_KEY,
@@ -173,7 +170,7 @@ def fetch_hindi_ids():
                 mid = item.get("id")
                 if mid:
                     hindi_ids.add(mid)
-            if len(hindi_ids) >= 1250:
+            if len(hindi_ids) >= 1260:
                 break
             if page >= data.get("total_pages", 1):
                 break
@@ -184,18 +181,10 @@ def fetch_hindi_ids():
 
 
 def fetch_gujarati_ids():
-    # MORE GUJARATI:
-    # 1. /discover/movie with with_original_language=gu, vote_count.gte=0, using ALL sort orders
-    #    and every available page: popularity.desc, vote_count.desc, vote_average.desc,
-    #    primary_release_date.desc, revenue.desc.
-    # 2. Once per primary_release_year from 1960 to current year.
-    # 3. with_origin_country=IN together with with_original_language=gu.
-    # 4. Seed titles search.
     print("Discovering Gujarati (gu) movies exhaustively...")
     gu_ids = set()
     current_year = datetime.now().year
 
-    # 1. All sort orders across all pages
     sort_orders = [
         "popularity.desc", "vote_count.desc", "vote_average.desc",
         "primary_release_date.desc", "revenue.desc"
@@ -223,9 +212,6 @@ def fetch_gujarati_ids():
                 break
             time.sleep(0.03)
 
-    print(f"  Gujarati after sort orders: {len(gu_ids)} IDs.")
-
-    # 2. Yearly scan from 1960 to current_year
     for year in range(1960, current_year + 1):
         params = {
             "api_key": TMDB_API_KEY,
@@ -241,7 +227,6 @@ def fetch_gujarati_ids():
             mid = item.get("id")
             if mid:
                 gu_ids.add(mid)
-        # If there are multiple pages for that year
         total_p = data.get("total_pages", 1)
         for p in range(2, min(total_p + 1, 5)):
             params["page"] = p
@@ -253,9 +238,6 @@ def fetch_gujarati_ids():
                         gu_ids.add(mid)
         time.sleep(0.02)
 
-    print(f"  Gujarati after yearly scan (1960-{current_year}): {len(gu_ids)} IDs.")
-
-    # 3. with_origin_country=IN together with with_original_language=gu
     for page in range(1, 51):
         params = {
             "api_key": TMDB_API_KEY,
@@ -278,9 +260,6 @@ def fetch_gujarati_ids():
             break
         time.sleep(0.03)
 
-    print(f"  Gujarati after origin country IN scan: {len(gu_ids)} IDs.")
-
-    # 4. Seed titles
     for seed in GUJARATI_SEEDS:
         params = {
             "api_key": TMDB_API_KEY,
@@ -289,7 +268,6 @@ def fetch_gujarati_ids():
         data = request_with_retry(f"{BASE_URL}/search/movie", params=params)
         if data:
             for item in data.get("results", []):
-                # Keep a result ONLY if original_language == "gu"
                 if item.get("original_language") == "gu":
                     mid = item.get("id")
                     if mid:
@@ -308,8 +286,6 @@ def parse_movie_details(data, lang_code):
     poster_path = data.get("poster_path")
     poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
     
-    # Requirement: For gu: keep if title and (poster OR overview).
-    # For others: skip if no overview AND no poster.
     title = (data.get("title") or data.get("original_title") or "").strip()
     if not title:
         return None
@@ -330,7 +306,6 @@ def parse_movie_details(data, lang_code):
     
     genres = [g["name"] for g in data.get("genres", []) if g.get("name")]
     
-    # Cast (top 6 with name, character, w185 photo)
     credits = data.get("credits") or {}
     raw_cast = credits.get("cast", [])[:6]
     cast = []
@@ -342,37 +317,16 @@ def parse_movie_details(data, lang_code):
             "profile_url": f"https://image.tmdb.org/t/p/w185{p_path}" if p_path else None
         })
         
-    # Director
     director = None
     for crew_member in credits.get("crew", []):
         if crew_member.get("job") == "Director":
             director = crew_member.get("name")
             break
             
-    # Keywords
     kw_raw = data.get("keywords") or {}
     kw_items = kw_raw.get("keywords") if isinstance(kw_raw.get("keywords"), list) else kw_raw.get("results", [])
     keywords = [k.get("name") for k in (kw_items or []) if isinstance(k, dict) and k.get("name")]
     
-    # Trailer key: official YouTube Trailer, else Teaser, else null
-    vids = (data.get("videos") or {}).get("results", [])
-    youtube_vids = [v for v in vids if v.get("site") == "YouTube"]
-    trailer_key = None
-    for v in youtube_vids:
-        if v.get("type") == "Trailer" and v.get("official") is True and v.get("key"):
-            trailer_key = v["key"]
-            break
-    if not trailer_key:
-        for v in youtube_vids:
-            if v.get("type") == "Trailer" and v.get("key"):
-                trailer_key = v["key"]
-                break
-    if not trailer_key:
-        for v in youtube_vids:
-            if v.get("type") == "Teaser" and v.get("key"):
-                trailer_key = v["key"]
-                break
-
     lang_name = LANG_CONFIG.get(lang_code, {}).get("name", lang_code)
     
     return {
@@ -394,7 +348,6 @@ def parse_movie_details(data, lang_code):
         "cast": cast,
         "director": director,
         "keywords": keywords[:15],
-        "trailer_key": trailer_key
     }
 
 
@@ -405,7 +358,7 @@ def fetch_movie_detail(mid, lang_code, cache):
         
     params = {
         "api_key": TMDB_API_KEY,
-        "append_to_response": "credits,keywords,videos"
+        "append_to_response": "credits,keywords"
     }
     url = f"{BASE_URL}/movie/{mid}"
     raw_json = request_with_retry(url, params=params, timeout=5)
@@ -413,10 +366,99 @@ def fetch_movie_detail(mid, lang_code, cache):
     return parsed
 
 
+def fetch_movie_videos(mid, videos_cache):
+    mid_str = str(mid)
+    if mid_str in videos_cache:
+        return videos_cache[mid_str]
+
+    params = {
+        "api_key": TMDB_API_KEY,
+        "include_video_language": "en,hi,ta,te,ml,kn,gu,null"
+    }
+    url = f"{BASE_URL}/movie/{mid}/videos"
+    raw_json = request_with_retry(url, params=params, timeout=5)
+    results = raw_json.get("results", []) if raw_json else []
+    return results
+
+
+def process_movie_trailers(movie, video_results):
+    orig_lang = movie.get("language", "en")
+    
+    # Filter YouTube videos of type Trailer or Teaser
+    candidates = [
+        v for v in video_results
+        if v.get("site") == "YouTube" and v.get("key") and v.get("type") in ("Trailer", "Teaser")
+    ]
+    
+    # Group by language (iso_639_1; treat null or empty as "en")
+    grouped = {}
+    for v in candidates:
+        lang = (v.get("iso_639_1") or "").strip().lower()
+        if not lang:
+            lang = "en"
+        if lang not in grouped:
+            grouped[lang] = []
+        grouped[lang].append(v)
+        
+    # For each language keep the best video:
+    # 1. Type == Trailer preferred over Teaser
+    # 2. Official == True preferred
+    # 3. Newest published_at
+    def video_rank(v):
+        is_trailer = 1 if v.get("type") == "Trailer" else 0
+        is_official = 1 if v.get("official") is True else 0
+        pub = v.get("published_at") or ""
+        return (is_trailer, is_official, pub)
+
+    trailers_list = []
+    for lang, vids in grouped.items():
+        vids.sort(key=video_rank, reverse=True)
+        best = vids[0]
+        lang_name = VIDEO_LANG_NAMES.get(lang, lang.upper())
+        is_original = (lang == orig_lang)
+        trailers_list.append({
+            "lang": lang,
+            "lang_name": lang_name,
+            "key": best["key"],
+            "is_original": is_original,
+            "name": best.get("name", "")
+        })
+
+    # Sort order:
+    # 1. original language first
+    # 2. English (en) second (if not original)
+    # 3. remaining languages
+    def trailer_sort_order(t):
+        if t.get("is_original"):
+            return (0, "")
+        if t.get("lang") == "en":
+            return (1, "")
+        return (2, t.get("lang_name", ""))
+
+    trailers_list.sort(key=trailer_sort_order)
+
+    # Determine default_trailer_key:
+    # original, else English, else first, else null
+    default_key = None
+    if trailers_list:
+        orig_t = next((t for t in trailers_list if t.get("is_original")), None)
+        en_t = next((t for t in trailers_list if t.get("lang") == "en"), None)
+        if orig_t:
+            default_key = orig_t["key"]
+        elif en_t:
+            default_key = en_t["key"]
+        else:
+            default_key = trailers_list[0]["key"]
+
+    orig_lang_name = LANG_CONFIG.get(orig_lang, {}).get("name", orig_lang)
+
+    return trailers_list, default_key, orig_lang_name
+
+
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     
-    # Load cache if available
+    # 1. Load details cache
     cache = {}
     if os.path.exists(CACHE_FILE):
         try:
@@ -426,30 +468,38 @@ def main():
         except Exception as e:
             print(f"Could not load cache: {e}")
             cache = {}
-            
-    # Remove any bn, mr, pa from cache or output
+
+    # 2. Load videos cache
+    videos_cache = {}
+    if os.path.exists(VIDEOS_CACHE_FILE):
+        try:
+            with open(VIDEOS_CACHE_FILE, "r", encoding="utf-8") as f:
+                videos_cache = json.load(f)
+            print(f"Loaded {len(videos_cache)} cached video results from {VIDEOS_CACHE_FILE}")
+        except Exception as e:
+            print(f"Could not load videos cache: {e}")
+            videos_cache = {}
+
+    # Purge any disallowed languages (bn, mr, pa)
     disallowed_langs = {"bn", "mr", "pa"}
     for k in list(cache.keys()):
         if cache[k] and cache[k].get("language") in disallowed_langs:
             del cache[k]
 
-    # Collect candidate IDs
+    # Discover candidate IDs
     all_candidate_ids = []
     seen_ids = set()
 
-    # 1. Hindi (dual-sort)
     for mid, lcode in fetch_hindi_ids():
         if mid not in seen_ids:
             seen_ids.add(mid)
             all_candidate_ids.append((mid, lcode))
 
-    # 2. Gujarati (exhaustive)
     for mid, lcode in fetch_gujarati_ids():
         if mid not in seen_ids:
             seen_ids.add(mid)
             all_candidate_ids.append((mid, lcode))
 
-    # 3. Standard languages: en, ta, te, ml, kn
     for lcode in ["en", "ta", "te", "ml", "kn"]:
         cfg = LANG_CONFIG[lcode]
         for mid, l in fetch_standard_language_ids(lcode, cfg):
@@ -457,10 +507,10 @@ def main():
                 seen_ids.add(mid)
                 all_candidate_ids.append((mid, l))
 
-    print(f"\nTotal unique candidates across all 7 target languages: {len(all_candidate_ids)}")
+    print(f"\nTotal candidate movies across 7 target languages: {len(all_candidate_ids)}")
 
-    # Details fetch with ThreadPoolExecutor (max 6 workers)
-    to_fetch = []
+    # Ensure details are fetched
+    to_fetch_details = []
     final_movies_map = {}
 
     for mid, lcode in all_candidate_ids:
@@ -472,21 +522,19 @@ def main():
                 item["language_name"] = LANG_CONFIG.get(lcode, {}).get("name", lcode)
                 final_movies_map[mid] = item
         else:
-            to_fetch.append((mid, lcode))
+            to_fetch_details.append((mid, lcode))
 
-    print(f"Movies already cached: {len(final_movies_map)}. Movies to fetch: {len(to_fetch)}.")
-
-    if to_fetch:
-        print("Fetching remaining movie details with ThreadPoolExecutor (6 workers)...")
-        completed_count = 0
+    if to_fetch_details:
+        print(f"Fetching details for {len(to_fetch_details)} remaining movies...")
+        completed = 0
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_to_movie = {
                 executor.submit(fetch_movie_detail, mid, lcode, cache): (mid, lcode)
-                for mid, lcode in to_fetch
+                for mid, lcode in to_fetch_details
             }
             for future in as_completed(future_to_movie):
                 mid, lcode = future_to_movie[future]
-                completed_count += 1
+                completed += 1
                 try:
                     result = future.result()
                     if result:
@@ -495,51 +543,99 @@ def main():
                 except Exception:
                     pass
 
-                if completed_count % 100 == 0 or completed_count == len(to_fetch):
-                    print(f"  Progress: {completed_count}/{len(to_fetch)} processed...")
-                    try:
-                        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                            json.dump(cache, f, ensure_ascii=False)
-                    except Exception:
-                        pass
-
-    # Save final cache
+    # Save details cache
     try:
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False)
-        print(f"Updated cache file with {len(cache)} entries.")
     except Exception as e:
-        print(f"Error saving cache: {e}")
+        print(f"Error saving details cache: {e}")
 
-    # Build final list of movies, strictly filtering out any bn, mr, pa
-    movies_list = [
-        m for m in final_movies_map.values()
-        if m and m.get("language") in LANG_CONFIG
-    ]
+    # Now fetch multi-language videos for all movies
+    target_movies = [m for m in final_movies_map.values() if m and m.get("language") in LANG_CONFIG]
+    print(f"\nProcessing multi-language trailers for {len(target_movies)} movies...")
 
-    # Sort by popularity descending
-    movies_list.sort(key=lambda m: m.get("popularity", 0.0), reverse=True)
+    to_fetch_videos = [m["id"] for m in target_movies if str(m["id"]) not in videos_cache]
+    print(f"Videos already cached: {len(target_movies) - len(to_fetch_videos)}. Videos to fetch: {len(to_fetch_videos)}.")
 
-    # Save to backend/data/movies.json
+    if to_fetch_videos:
+        print("Fetching multi-language videos with ThreadPoolExecutor (max 6 workers)...")
+        completed = 0
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_to_vid = {
+                executor.submit(fetch_movie_videos, mid, videos_cache): mid
+                for mid in to_fetch_videos
+            }
+            for future in as_completed(future_to_vid):
+                mid = future_to_vid[future]
+                completed += 1
+                try:
+                    vids = future.result()
+                    videos_cache[str(mid)] = vids
+                except Exception:
+                    videos_cache[str(mid)] = []
+
+                if completed % 200 == 0 or completed == len(to_fetch_videos):
+                    print(f"  Videos progress: {completed}/{len(to_fetch_videos)}...")
+                    try:
+                        with open(VIDEOS_CACHE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(videos_cache, f, ensure_ascii=False)
+                    except Exception:
+                        pass
+
+    # Save final videos cache
+    try:
+        with open(VIDEOS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(videos_cache, f, ensure_ascii=False)
+        print(f"Saved {len(videos_cache)} video cache entries to {VIDEOS_CACHE_FILE}.")
+    except Exception as e:
+        print(f"Error saving videos cache: {e}")
+
+    # Process and attach trailers to each movie
+    # Keep track of trailer counts per language group
+    trailer_stats = {lang: {"0": 0, "1": 0, "2": 0, "3+": 0} for lang in LANG_CONFIG}
+
+    for m in target_movies:
+        mid_str = str(m["id"])
+        raw_vids = videos_cache.get(mid_str, [])
+        trailers, default_key, orig_lang_name = process_movie_trailers(m, raw_vids)
+        
+        m["trailers"] = trailers
+        m["default_trailer_key"] = default_key
+        m["trailer_key"] = default_key
+        m["original_language_name"] = orig_lang_name
+
+        m_lang = m.get("language", "unknown")
+        n_trailers = len(trailers)
+        if m_lang in trailer_stats:
+            if n_trailers == 0:
+                trailer_stats[m_lang]["0"] += 1
+            elif n_trailers == 1:
+                trailer_stats[m_lang]["1"] += 1
+            elif n_trailers == 2:
+                trailer_stats[m_lang]["2"] += 1
+            else:
+                trailer_stats[m_lang]["3+"] += 1
+
+    # Sort movies by popularity descending
+    target_movies.sort(key=lambda m: m.get("popularity", 0.0), reverse=True)
+
+    # Save output to backend/data/movies.json
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(movies_list, f, ensure_ascii=False, indent=2)
+        json.dump(target_movies, f, ensure_ascii=False, indent=2)
 
     file_size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
 
-    # Movie counts by language
-    counts_by_lang = {}
-    for m in movies_list:
-        l = m.get("language", "unknown")
-        counts_by_lang[l] = counts_by_lang.get(l, 0) + 1
-
-    print("\n================ FINAL DATASET BUILD SUMMARY ================")
-    print(f"Total movies saved: {len(movies_list)}")
+    print("\n================ FINAL DATASET & TRAILER SUMMARY ================")
+    print(f"Total movies saved: {len(target_movies)}")
     print(f"movies.json file size: {file_size_mb:.2f} MB")
-    print("Movie count per language:")
+    print("\nTrailer Language Breakdown per Language Group:")
+    print("Language                 Total   0 Trailers   1 Trailer   2 Trailers   3+ Trailers")
+    print("-" * 75)
     for l_code, cfg in LANG_CONFIG.items():
-        cnt = counts_by_lang.get(l_code, 0)
-        print(f"  {l_code} ({cfg['name']}): {cnt} movies")
-    print("============================================================\n")
+        st = trailer_stats[l_code]
+        tot = sum(st.values())
+        print(f"{cfg['name']:<24} {tot:<7} {st['0']:<12} {st['1']:<11} {st['2']:<12} {st['3+']:<11}")
+    print("=================================================================\n")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: cinematch
+    env: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: TMDB_API_KEY
+        sync: false

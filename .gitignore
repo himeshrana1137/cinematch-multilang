@@ -1,0 +1,31 @@
+# Environment files
+.env
+*.env
+backend/.env
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.npm/
+npm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# DO NOT IGNORE built frontend and cached movie data
+!frontend/dist/
+!frontend/dist/**
+!backend/data/movies.json
+!backend/data/tmdb_cache.json

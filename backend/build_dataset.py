@@ -480,10 +480,9 @@ def main():
             print(f"Could not load videos cache: {e}")
             videos_cache = {}
 
-    # Purge any disallowed languages (bn, mr, pa)
-    disallowed_langs = {"bn", "mr", "pa"}
+    # Purge any unconfigured languages
     for k in list(cache.keys()):
-        if cache[k] and cache[k].get("language") in disallowed_langs:
+        if cache[k] and cache[k].get("language") not in LANG_CONFIG:
             del cache[k]
 
     # Discover candidate IDs

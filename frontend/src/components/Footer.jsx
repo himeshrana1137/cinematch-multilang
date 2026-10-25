@@ -34,7 +34,7 @@ export default function Footer() {
           lineHeight: 1.6,
           maxWidth: '600px'
         }}>
-          Multi-Language Movie Discovery &amp; Hybrid Content-Quality Recommender covering Hollywood, Bollywood, Tollywood, Kollywood, Mollywood, Gujarati, Punjabi, Kannada, Marathi, and Bengali cinema.
+          Multi-Language Movie Discovery &amp; Hybrid Content-Quality Recommender covering Hollywood, Bollywood/Hindi, Gujarati, Tollywood, Kollywood, Mollywood and Kannada cinema.
         </p>
 
         {/* Required TMDB Attribution */}

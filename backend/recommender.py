@@ -40,7 +40,7 @@ class MovieRecommender:
         if not raw_movies:
             return
 
-        # Filter strictly to allowed languages (removing bn, mr, pa)
+        # Filter strictly to allowed languages
         self.movies = [
             m for m in raw_movies
             if m and m.get("language") in ALLOWED_LANGUAGES

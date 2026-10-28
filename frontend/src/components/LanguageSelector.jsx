@@ -13,25 +13,43 @@ export const CHIPS = [
   { id: 'kn', label: 'Kannada', queryValue: 'kn' },
 ];
 
-export default function LanguageSelector({ activeChipId, onSelectChip }) {
+export default function LanguageSelector({ activeChipId, onSelectChip, transientNote }) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   return (
     <div style={{ width: '100%', marginBottom: '20px' }}>
-      {/* Shortened 11-12px Header */}
+      {/* Shortened 11-12px Header + Transient Note */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
-        color: 'var(--text-secondary)',
-        fontSize: '11.5px',
-        fontWeight: 600,
-        letterSpacing: '0.06em',
-        textTransform: 'uppercase',
-        marginBottom: '8px'
+        justifyContent: 'space-between',
+        marginBottom: '8px',
+        flexWrap: 'wrap',
+        gap: '6px'
       }}>
-        <Globe size={14} color="var(--accent-violet)" />
-        <span>Filter by cinema</span>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          color: 'var(--text-secondary)',
+          fontSize: '11.5px',
+          fontWeight: 600,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+        }}>
+          <Globe size={14} color="var(--accent-violet)" />
+          <span>Filter by cinema</span>
+        </div>
+
+        {transientNote && (
+          <div
+            className="transient-note"
+            role="status"
+            aria-live="polite"
+          >
+            <span>{transientNote}</span>
+          </div>
+        )}
       </div>
 
       {/* Single-select Pill Chips with soft edge fade hint */}

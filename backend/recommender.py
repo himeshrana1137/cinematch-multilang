@@ -1,5 +1,7 @@
 import os
 import json
+import unicodedata
+import difflib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -12,6 +14,21 @@ ALLOWED_LANGUAGES = {
     "ml": "Malayalam",
     "kn": "Kannada"
 }
+
+
+def normalize_text(text):
+    if not text:
+        return "", ""
+    # Unicode NFKD & strip combining accents (e.g. Bahubali = Bāhubali)
+    nfkd = unicodedata.normalize('NFKD', text)
+    stripped = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    cf = stripped.casefold()
+    cf = cf.replace('&', ' and ')
+    # Turn every character that is not a letter or digit into a space
+    cleaned = ''.join(c if c.isalnum() else ' ' for c in cf)
+    spaced = ' '.join(cleaned.split())
+    compact = spaced.replace(' ', '')
+    return spaced, compact
 
 
 class MovieRecommender:
@@ -27,6 +44,7 @@ class MovieRecommender:
         self.vectorizer = None
         self.quality_scores = None
         self.language_counts = {}
+        self.search_index = []
         self.load_and_fit()
 
     def load_and_fit(self):
@@ -128,7 +146,40 @@ class MovieRecommender:
         raw_quality = 0.65 * wr_norm + 0.35 * pop_norm
         q_min, q_max = np.min(raw_quality), np.max(raw_quality)
         self.quality_scores = (raw_quality - q_min) / (q_max - q_min + 1e-6)
-        print("Recommender TF-IDF and Quality matrix fitted successfully.")
+
+        # Build search index once at startup
+        self.search_index = []
+        for idx, m in enumerate(self.movies):
+            variants = []
+            titles = [m.get("title", ""), m.get("original_title", "")]
+            # Alias for Last Film Show (Chhello Show)
+            if m.get("id") == 821494:
+                titles.append("Chhello Show")
+
+            seen_compact = set()
+            for t in titles:
+                if not t:
+                    continue
+                s, c = normalize_text(t)
+                if c and c not in seen_compact:
+                    seen_compact.add(c)
+                    variants.append((s, c, s.split()))
+                if s.startswith("the "):
+                    no_the_s = s[4:].strip()
+                    no_the_c = no_the_s.replace(' ', '')
+                    if no_the_c and no_the_c not in seen_compact:
+                        seen_compact.add(no_the_c)
+                        variants.append((no_the_s, no_the_c, no_the_s.split()))
+
+            self.search_index.append({
+                "idx": idx,
+                "movie": m,
+                "variants": variants,
+                "quality": float(self.quality_scores[idx]),
+                "popularity": float(m.get("popularity", 0.0))
+            })
+
+        print("Recommender TF-IDF, Quality matrix, and Search index fitted successfully.")
 
     def get_movie(self, movie_id):
         try:
@@ -162,7 +213,6 @@ class MovieRecommender:
         }
 
     def get_languages(self):
-        # Return [{code, name, count}] in standard order
         order = ["en", "hi", "gu", "ta", "te", "ml", "kn"]
         result = []
         for code in order:
@@ -171,33 +221,67 @@ class MovieRecommender:
             result.append({"code": code, "name": name, "count": count})
         return result
 
-    def search(self, query="", languages=None, limit=20):
+    def search(self, query="", limit=10):
+        # Global search: ignores languages and genre parameters
         if not query or not self.movies:
             return []
 
-        q = query.strip().lower()
-        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+        q_spaced, q_compact = normalize_text(query)
+        if len(q_compact) < 2:
+            return []
 
-        matches = []
-        for idx, m in enumerate(self.movies):
-            if lang_set and m.get("language", "").lower() not in lang_set:
-                continue
+        q_tokens = q_spaced.split()
+        matched_tier = {}
 
-            title = (m.get("title") or "").lower()
-            orig_title = (m.get("original_title") or "").lower()
+        for item in self.search_index:
+            idx = item["idx"]
+            best_tier = 99
+            for s, c, tokens in item["variants"]:
+                # Tier 1: exact compact match
+                if c == q_compact:
+                    best_tier = 1
+                    break
+                # Tier 2: title starts with compact query
+                if c.startswith(q_compact):
+                    best_tier = min(best_tier, 2)
+                # Tier 3: every query token is a prefix of some title token
+                elif q_tokens and len(q_tokens) > 1 and all(any(t.startswith(q) for t in tokens) for q in q_tokens):
+                    best_tier = min(best_tier, 3)
+                # Tier 4: query compact substring of title compact
+                elif q_compact in c:
+                    best_tier = min(best_tier, 4)
 
-            if q in title or q in orig_title:
-                matches.append((idx, m))
+            if best_tier <= 4:
+                matched_tier[idx] = best_tier
 
-        def search_rank(item):
-            idx, m = item
-            t = (m.get("title") or "").lower()
-            starts = 1 if t.startswith(q) else 0
-            q_score = float(self.quality_scores[idx]) if self.quality_scores is not None else 0.0
-            return (starts, q_score)
+        # Tier 5: fuzzy fallback only when fewer than 8 results exist
+        if len(matched_tier) < 8 and len(q_compact) >= 3:
+            q_len = len(q_compact)
+            first_char = q_compact[0]
+            for item in self.search_index:
+                idx = item["idx"]
+                if idx in matched_tier:
+                    continue
+                for s, c, tokens in item["variants"]:
+                    if not c or c[0] != first_char:
+                        continue
+                    if abs(len(c) - q_len) <= 3:
+                        if difflib.SequenceMatcher(None, q_compact, c).ratio() >= 0.8:
+                            matched_tier[idx] = 5
+                            break
+                    elif len(c) > q_len:
+                        prefix_c = c[:q_len]
+                        if difflib.SequenceMatcher(None, q_compact, prefix_c).ratio() >= 0.8:
+                            matched_tier[idx] = 5
+                            break
 
-        matches.sort(key=search_rank, reverse=True)
-        return [self.format_card(m) for _, m in matches[:limit]]
+        matched_items = [
+            (matched_tier[item["idx"]], -item["quality"], -item["popularity"], item["movie"])
+            for item in self.search_index if item["idx"] in matched_tier
+        ]
+        matched_items.sort(key=lambda x: (x[0], x[1], x[2]))
+
+        return [self.format_card(m) for _, _, _, m in matched_items[:limit]]
 
     def get_popular(self, languages=None, n=12):
         if not self.movies or self.quality_scores is None:
@@ -217,17 +301,17 @@ class MovieRecommender:
         return [self.format_card(m) for _, m, _ in candidates[:n]]
 
     def recommend(self, movie_id, languages=None, n=12, alpha=0.7):
-        # Fixed blend default 0.7 content + 0.3 quality
         if not self.movies or self.tfidf_matrix is None:
-            return []
+            return {"results": [], "same_language": [], "other_languages": []}
 
         try:
             mid = int(movie_id)
         except (ValueError, TypeError):
-            return []
+            return {"results": [], "same_language": [], "other_languages": []}
 
         if mid not in self.id_to_idx:
-            return self.get_popular(languages=languages, n=n)
+            fallback = self.get_popular(languages=languages, n=n)
+            return {"results": fallback, "same_language": fallback, "other_languages": []}
 
         target_idx = self.id_to_idx[mid]
         target_movie = self.movies[target_idx]
@@ -236,24 +320,19 @@ class MovieRecommender:
         target_vec = self.tfidf_matrix[target_idx]
         sims = self.tfidf_matrix.dot(target_vec.T).toarray().ravel()
 
-        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
-
         candidate_indices = []
         candidate_content = []
         candidate_quality = []
 
-        for idx, m in enumerate(self.movies):
+        for idx in range(len(self.movies)):
             if idx == target_idx:
-                continue
-            m_lang = m.get("language", "").lower()
-            if lang_set and m_lang not in lang_set:
                 continue
             candidate_indices.append(idx)
             candidate_content.append(sims[idx])
             candidate_quality.append(self.quality_scores[idx])
 
         if not candidate_indices:
-            return []
+            return {"results": [], "same_language": [], "other_languages": []}
 
         c_arr = np.array(candidate_content, dtype=np.float32)
         q_arr = np.array(candidate_quality, dtype=np.float32)
@@ -272,15 +351,8 @@ class MovieRecommender:
         else:
             q_norm = q_arr
 
-        # Fixed blend: 0.7 * content + 0.3 * quality (alpha defaults to 0.7)
-        alpha = max(0.0, min(1.0, float(alpha)))
-        hybrid = alpha * c_norm + (1.0 - alpha) * q_norm
-
-        # Same-language bonus when no language filter is specified
-        if not lang_set:
-            for i, idx in enumerate(candidate_indices):
-                if self.movies[idx].get("language", "") == target_lang:
-                    hybrid[i] += 0.05
+        # Fixed blend: 0.7 * content + 0.3 * quality
+        hybrid = 0.7 * c_norm + 0.3 * q_norm
 
         # Normalize final score to match percentage (65% to 99%)
         h_min, h_max = np.min(hybrid), np.max(hybrid)
@@ -292,11 +364,96 @@ class MovieRecommender:
 
         sorted_order = np.argsort(-hybrid)
 
-        results = []
-        for i in sorted_order[:n]:
+        same_language = []
+        other_languages = []
+        combined_results = []
+
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+
+        for i in sorted_order:
             idx = candidate_indices[i]
             m = self.movies[idx]
             match_pct = int(round(match_percentages[i]))
-            results.append(self.format_card(m, match_percent=match_pct))
+            card = self.format_card(m, match_percent=match_pct)
+            m_lang = m.get("language", "")
 
-        return results
+            # same_language: top n movies whose original language equals the picked movie's
+            if m_lang == target_lang:
+                if len(same_language) < n:
+                    same_language.append(card)
+            else:
+                # other_languages: top n movies of all OTHER languages
+                if len(other_languages) < n:
+                    other_languages.append(card)
+
+            # combined_results: preserves backward compatibility with existing tests
+            if lang_set is None or m_lang.lower() in lang_set:
+                if len(combined_results) < n:
+                    combined_results.append(card)
+
+            if len(same_language) >= n and len(other_languages) >= n and len(combined_results) >= n:
+                break
+
+        return {
+            "results": combined_results,
+            "same_language": same_language,
+            "other_languages": other_languages
+        }
+
+    def get_genres(self, languages=None):
+        if not self.movies:
+            return []
+
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+        genre_counts = {}
+        for m in self.movies:
+            if lang_set and m.get("language", "").lower() not in lang_set:
+                continue
+            for g in m.get("genres", []):
+                genre_counts[g] = genre_counts.get(g, 0) + 1
+
+        popular_order = [
+            "Action", "Comedy", "Drama", "Horror", "Romance",
+            "Thriller", "Science Fiction", "Crime"
+        ]
+        sorted_genres = []
+        for p in popular_order:
+            if p in genre_counts and genre_counts[p] > 0:
+                sorted_genres.append({"name": p, "count": genre_counts[p]})
+
+        rest = [g for g in genre_counts if g not in popular_order and genre_counts[g] > 0]
+        rest.sort()
+        for r in rest:
+            sorted_genres.append({"name": r, "count": genre_counts[r]})
+
+        return sorted_genres
+
+    def browse(self, languages=None, genre=None, offset=0, limit=24):
+        if not self.movies or self.quality_scores is None:
+            return {"total": 0, "offset": offset, "limit": limit, "items": []}
+
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+        genre_str = genre.strip() if genre else None
+
+        candidates = []
+        for idx, m in enumerate(self.movies):
+            if lang_set and m.get("language", "").lower() not in lang_set:
+                continue
+            if genre_str and genre_str not in m.get("genres", []):
+                continue
+            q_score = float(self.quality_scores[idx])
+            pop_score = float(m.get("popularity", 0.0))
+            candidates.append((q_score, pop_score, m))
+
+        # Ordered strictly by quality score descending, then popularity descending
+        candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        total = len(candidates)
+        sliced = candidates[offset : offset + limit]
+        items = [self.format_card(m) for _, _, m in sliced]
+
+        return {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "items": items
+        }

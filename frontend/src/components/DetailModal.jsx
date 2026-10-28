@@ -11,7 +11,7 @@ const LANG_NAME_MAP = {
   kn: 'Kannada',
 };
 
-export default function DetailModal({ movie, onClose, autoPlayTrailer = false }) {
+export default function DetailModal({ movie, onClose, autoPlayTrailer = false, activeChipId = 'all' }) {
   const [showTrailer, setShowTrailer] = useState(autoPlayTrailer);
   const [details, setDetails] = useState(movie);
   const [loading, setLoading] = useState(false);
@@ -51,10 +51,6 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
       .then((data) => {
         if (isMounted && data) {
           setDetails((prev) => ({ ...prev, ...data }));
-          // Set initial active language to first trailer (original language is first)
-          if (data.trailers && data.trailers.length > 0) {
-            setActiveLang(data.trailers[0].lang);
-          }
         }
       })
       .catch((err) => console.error('Error fetching movie details:', err))
@@ -88,7 +84,6 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
       const detailsEl = detailsRef.current;
       if (!detailsEl) return;
       const detailsRect = detailsEl.getBoundingClientRect();
-      // Release stickiness once details section has scrolled up near the player
       if (detailsRect.top < 310) {
         setIsPlayerSticky(false);
       } else {
@@ -100,10 +95,98 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
     return () => scrollEl.removeEventListener('scroll', handleScroll);
   }, []);
 
-  if (!movie) return null;
-
   const currentMovie = details || movie;
-  const trailers = currentMovie.trailers || [];
+  const trailers = currentMovie?.trailers || [];
+  const movieOrigLang = currentMovie?.language || 'en';
+
+  // Compute shown chips based strictly on activeChipId and trailers
+  const trailerChips = React.useMemo(() => {
+    const embeddedMap = {};
+    for (const t of trailers) {
+      if (t?.lang) embeddedMap[t.lang] = t;
+    }
+
+    const shownCodes = [];
+    const addLang = (code) => {
+      if (code && !shownCodes.includes(code)) {
+        shownCodes.push(code);
+      }
+    };
+
+    // Base: Original language is always first (tagged ORIGINAL)
+    addLang(movieOrigLang);
+
+    // RULE 1: active chip is "all" or "en" (Hollywood)
+    if (activeChipId === 'all' || activeChipId === 'en') {
+      addLang('en');
+      addLang('hi');
+      addLang('ta');
+      addLang('te');
+      // plus ml, kn, gu ONLY when TMDB has an embedded trailer
+      for (const opt of ['ml', 'kn', 'gu']) {
+        if (embeddedMap[opt]) {
+          addLang(opt);
+        }
+      }
+    }
+    // RULE 2: South chips ("south_indian", "ta", "te", "ml", "kn")
+    else if (['south_indian', 'south', 'ta', 'te', 'ml', 'kn'].includes(activeChipId)) {
+      addLang('hi'); // Hindi is always present
+      if (activeChipId === 'south_indian' || activeChipId === 'south') {
+        for (const sc of ['ta', 'te', 'ml', 'kn']) {
+          addLang(sc);
+        }
+      } else {
+        addLang(activeChipId);
+      }
+    }
+    // RULE 3: Gujarati chip ("gu")
+    else if (activeChipId === 'gu') {
+      addLang('gu');
+    }
+
+    return shownCodes.map((code) => {
+      const isOrig = (code === movieOrigLang);
+      const isEmbedded = Boolean(embeddedMap[code]);
+      const tObj = embeddedMap[code];
+      return {
+        code,
+        name: LANG_NAME_MAP[code] || code,
+        is_original: isOrig,
+        is_embedded: isEmbedded,
+        key: tObj?.key || null,
+        nameDetail: tObj?.name || null
+      };
+    });
+  }, [movieOrigLang, trailers, activeChipId]);
+
+  // Auto-select initial embedded language whenever movie or activeChip changes
+  useEffect(() => {
+    if (!currentMovie) return;
+    const embedded = trailerChips.filter((c) => c.is_embedded);
+
+    let savedLang = null;
+    try {
+      savedLang = localStorage.getItem('cinematch_last_trailer_lang');
+    } catch (e) {}
+
+    let chosen = null;
+    if (savedLang && embedded.some((c) => c.code === savedLang)) {
+      chosen = savedLang;
+    } else if (embedded.some((c) => c.is_original)) {
+      chosen = movieOrigLang;
+    } else if (embedded.some((c) => c.code === 'en')) {
+      chosen = 'en';
+    } else if (embedded.some((c) => c.code === 'hi')) {
+      chosen = 'hi';
+    } else if (embedded.length > 0) {
+      chosen = embedded[0].code;
+    }
+
+    setActiveLang(chosen);
+  }, [currentMovie?.id, trailerChips, movieOrigLang]);
+
+  if (!movie) return null;
 
   // Resolve real trailer language name (never "Hollywood", always "English", "Telugu", etc.)
   const origTrailerObj = trailers.find((t) => t.is_original);
@@ -113,9 +196,10 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
     (currentMovie.language_name === 'Hollywood' ? 'English' : currentMovie.language_name) ||
     'English';
 
-  // Determine active trailer object
-  const activeTrailer = trailers.find((t) => t.lang === activeLang) || trailers[0] || null;
-  const activeKey = activeTrailer?.key || currentMovie.default_trailer_key || currentMovie.trailer_key;
+  // Determine active trailer object & key
+  const activeChipObj = trailerChips.find((c) => c.code === activeLang && c.is_embedded) || trailerChips.find((c) => c.is_embedded) || null;
+  const activeTrailer = activeChipObj;
+  const activeKey = activeChipObj?.key || currentMovie.default_trailer_key || currentMovie.trailer_key;
 
   const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
     (currentMovie.title || '') + ' ' + (currentMovie.year || '') + ' trailer'
@@ -128,25 +212,40 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
     setIsSwapping(true);
     setHasUserSwapped(true);
     setShowTrailer(true);
+    try {
+      localStorage.setItem('cinematch_last_trailer_lang', langCode);
+    } catch (e) {}
     setTimeout(() => {
       setActiveLang(langCode);
       setIsSwapping(false);
     }, 180);
   };
 
+  const handleLinkOnlyChip = (chip) => {
+    const query = `${currentMovie.title || ''} ${currentMovie.year || ''} official trailer ${chip.name}`.trim();
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   // Keyboard navigation for tablist
   const handleKeyDownTabs = (e, index) => {
-    if (trailers.length === 0) return;
+    if (trailerChips.length === 0) return;
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const nextIdx = (index + 1) % trailers.length;
-      handleSelectLanguage(trailers[nextIdx].lang);
+      const nextIdx = (index + 1) % trailerChips.length;
+      const nextChip = trailerChips[nextIdx];
+      if (nextChip.is_embedded) {
+        handleSelectLanguage(nextChip.code);
+      }
       const buttons = tabsContainerRef.current?.querySelectorAll('button[role="tab"]');
       buttons?.[nextIdx]?.focus();
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const prevIdx = (index - 1 + trailers.length) % trailers.length;
-      handleSelectLanguage(trailers[prevIdx].lang);
+      const prevIdx = (index - 1 + trailerChips.length) % trailerChips.length;
+      const prevChip = trailerChips[prevIdx];
+      if (prevChip.is_embedded) {
+        handleSelectLanguage(prevChip.code);
+      }
       const buttons = tabsContainerRef.current?.querySelectorAll('button[role="tab"]');
       buttons?.[prevIdx]?.focus();
     }
@@ -262,7 +361,7 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                 ref={iframeRef}
                 key={activeKey}
                 src={`https://www.youtube-nocookie.com/embed/${activeKey}?autoplay=${hasUserSwapped || autoPlayTrailer ? 1 : 0}&rel=0&modestbranding=1&playsinline=1&fs=1`}
-                title={`${currentMovie.title} Trailer (${activeTrailer?.lang_name || 'Official'})`}
+                title={`${currentMovie.title} Trailer (${activeTrailer?.name || activeTrailer?.lang_name || 'Official'})`}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                 allowFullScreen
                 style={{
@@ -307,7 +406,7 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                       style={{ padding: '12px 24px', fontSize: '0.95rem', minHeight: '44px' }}
                     >
                       <Play size={20} fill="#ffffff" color="#ffffff" />
-                      Play {activeTrailer?.lang_name || origLangName} Trailer
+                      Play {activeTrailer?.name || activeTrailer?.lang_name || origLangName} Trailer
                     </button>
                   ) : (
                     <div style={{
@@ -419,7 +518,7 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
             </span>
           </div>
 
-          {trailers.length > 0 ? (
+          {trailerChips.length > 0 ? (
             <div
               ref={tabsContainerRef}
               role="tablist"
@@ -435,51 +534,108 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                 scrollbarWidth: 'none',
               }}
             >
-              {trailers.map((t, idx) => {
-                const isActive = (t.lang === activeLang) || (!activeLang && idx === 0);
+              {trailerChips.map((chip, idx) => {
+                const isActive = chip.is_embedded && (chip.code === activeLang);
+
+                if (chip.is_embedded) {
+                  return (
+                    <button
+                      key={chip.code}
+                      role="tab"
+                      aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
+                      onClick={() => handleSelectLanguage(chip.code)}
+                      onKeyDown={(e) => handleKeyDownTabs(e, idx)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0 16px',
+                        minHeight: '40px',
+                        height: '40px',
+                        borderRadius: 'var(--radius-pill)',
+                        fontSize: '0.84rem',
+                        fontWeight: isActive ? 600 : 500,
+                        cursor: 'pointer',
+                        border: isActive
+                          ? '1px solid var(--accent-violet)'
+                          : '1px solid rgba(255, 255, 255, 0.12)',
+                        background: isActive ? '#7c5cff' : 'rgba(255, 255, 255, 0.06)',
+                        color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                        boxShadow: isActive ? '0 0 14px var(--accent-violet-glow)' : 'none',
+                        flexShrink: 0,
+                        transition: 'all 0.18s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                      }}
+                    >
+                      <span>{chip.name}</span>
+                      {chip.is_original && (
+                        <span style={{
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          background: isActive ? 'rgba(0, 0, 0, 0.35)' : 'rgba(34, 197, 94, 0.25)',
+                          color: isActive ? '#ffffff' : '#4ade80',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase'
+                        }}>
+                          ORIGINAL
+                        </span>
+                      )}
+                    </button>
+                  );
+                }
+
+                // Link-only chip (without TMDB trailer)
                 return (
                   <button
-                    key={t.lang}
+                    key={chip.code}
                     role="tab"
-                    aria-selected={isActive}
-                    tabIndex={isActive ? 0 : -1}
-                    onClick={() => handleSelectLanguage(t.lang)}
-                    onKeyDown={(e) => handleKeyDownTabs(e, idx)}
+                    aria-selected={false}
+                    aria-label="No embedded trailer on TMDB. Search on YouTube"
+                    onClick={() => handleLinkOnlyChip(chip)}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
-                      padding: '0 16px',
+                      gap: '5px',
+                      padding: '0 14px',
                       minHeight: '40px',
                       height: '40px',
                       borderRadius: 'var(--radius-pill)',
                       fontSize: '0.84rem',
-                      fontWeight: isActive ? 600 : 500,
+                      fontWeight: 500,
                       cursor: 'pointer',
-                      border: isActive
-                        ? '1px solid var(--accent-violet)'
-                        : '1px solid rgba(255, 255, 255, 0.12)',
-                      background: isActive ? '#7c5cff' : 'rgba(255, 255, 255, 0.06)',
-                      color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                      boxShadow: isActive ? '0 0 14px var(--accent-violet-glow)' : 'none',
+                      border: '1px dashed rgba(255, 255, 255, 0.24)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      color: 'rgba(255, 255, 255, 0.65)',
                       flexShrink: 0,
                       transition: 'all 0.18s ease',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.45)';
+                      e.currentTarget.style.color = '#ffffff';
                     }}
                     onMouseLeave={(e) => {
-                      if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.24)';
+                      e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
                     }}
                   >
-                    <span>{t.lang_name}</span>
-                    {t.is_original && (
+                    <span>{chip.name}</span>
+                    {chip.is_original && (
                       <span style={{
                         fontSize: '0.62rem',
                         fontWeight: 800,
                         letterSpacing: '0.04em',
-                        background: isActive ? 'rgba(0, 0, 0, 0.35)' : 'rgba(34, 197, 94, 0.25)',
-                        color: isActive ? '#ffffff' : '#4ade80',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        color: '#4ade80',
                         padding: '1px 5px',
                         borderRadius: '4px',
                         textTransform: 'uppercase'
@@ -487,6 +643,7 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
                         ORIGINAL
                       </span>
                     )}
+                    <ExternalLink size={13} style={{ marginLeft: '2px', opacity: 0.7 }} />
                   </button>
                 );
               })}
@@ -494,6 +651,18 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false })
           ) : (
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
               None found in TMDB
+            </div>
+          )}
+
+          {/* Caption when at least one link-only chip is shown */}
+          {trailerChips.some((c) => !c.is_embedded) && (
+            <div style={{
+              fontSize: '0.74rem',
+              color: 'var(--text-muted)',
+              marginTop: '8px',
+              lineHeight: 1.35
+            }}>
+              Chips with a link icon open a YouTube search because TMDB has no embedded trailer in that language.
             </div>
           )}
         </div>

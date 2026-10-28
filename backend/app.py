@@ -67,14 +67,14 @@ def search():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify([])
-    
-    languages = parse_languages_param(request.args.get("languages"))
+
+    # Must ignore any languages and genre parameter and search the whole catalogue
     try:
-        limit = int(request.args.get("limit", 20))
+        limit = int(request.args.get("limit", 10))
     except ValueError:
-        limit = 20
-        
-    results = recommender.search(query=query, languages=languages, limit=limit)
+        limit = 10
+
+    results = recommender.search(query=query, limit=limit)
     return jsonify(results)
 
 
@@ -86,9 +86,35 @@ def popular():
     except ValueError:
         n = 12
     n = max(1, min(n, 100))
-    
+
     results = recommender.get_popular(languages=languages, n=n)
     return jsonify(results)
+
+
+@app.route("/api/genres", methods=["GET"])
+def get_genres():
+    languages = parse_languages_param(request.args.get("languages"))
+    genres = recommender.get_genres(languages=languages)
+    return jsonify(genres)
+
+
+@app.route("/api/browse", methods=["GET"])
+def browse():
+    languages = parse_languages_param(request.args.get("languages"))
+    genre = request.args.get("genre")
+    try:
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        offset = 0
+    try:
+        limit = int(request.args.get("limit", 24))
+    except ValueError:
+        limit = 24
+    offset = max(0, offset)
+    limit = max(1, min(limit, 100))
+
+    data = recommender.browse(languages=languages, genre=genre, offset=offset, limit=limit)
+    return jsonify(data)
 
 
 @app.route("/api/recommend", methods=["GET"])
@@ -96,9 +122,9 @@ def recommend():
     movie_id = request.args.get("movie_id")
     if not movie_id:
         return jsonify({"error": "Bad Request", "message": "movie_id query parameter is required"}), 400
-        
+
     languages = parse_languages_param(request.args.get("languages"))
-    
+
     try:
         n = int(request.args.get("n", 12))
     except ValueError:

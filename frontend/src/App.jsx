@@ -9,7 +9,7 @@ import DetailModal from './components/DetailModal';
 import { CardSkeleton, CarouselSkeleton, HeroSkeleton } from './components/SkeletonLoader';
 import ErrorBanner from './components/ErrorBanner';
 import Footer from './components/Footer';
-import { Sparkles, TrendingUp, Film, RefreshCw, X, Heart, SmilePlus } from 'lucide-react';
+import { Sparkles, TrendingUp, Film, RefreshCw, X, Heart, SmilePlus, Check } from 'lucide-react';
 import { useFavorites } from './context/FavoritesContext';
 
 const STORAGE_CHIP_KEY = 'cinematch_active_chip';
@@ -19,6 +19,9 @@ const STORAGE_MOOD_KEY = 'cm_mood_v1';
 function getInitialChip() {
   try {
     const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('movie')) {
+      return 'all';
+    }
     const urlChip = urlParams.get('cinema') || urlParams.get('lang');
     if (urlChip && CHIPS.some((c) => c.id === urlChip)) {
       return urlChip;
@@ -35,6 +38,10 @@ function getInitialChip() {
 
 function getInitialGenre() {
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('movie')) {
+      return null;
+    }
     const saved = localStorage.getItem(STORAGE_GENRE_KEY);
     if (saved && saved.trim()) {
       return saved.trim();
@@ -47,6 +54,10 @@ function getInitialGenre() {
 
 function getInitialMood() {
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('movie')) {
+      return null;
+    }
     const saved = localStorage.getItem(STORAGE_MOOD_KEY);
     if (saved && saved.trim()) {
       return saved.trim();
@@ -71,6 +82,11 @@ export default function App() {
 
   const [heroMovie, setHeroMovie] = useState(null);
   const [pickedMovie, setPickedMovie] = useState(null);
+  const pickedMovieRef = useRef(null);
+
+  useEffect(() => {
+    pickedMovieRef.current = pickedMovie;
+  }, [pickedMovie]);
 
   // Recommendations state (when a movie is picked)
   const [sameLanguageRecs, setSameLanguageRecs] = useState([]);
@@ -101,6 +117,18 @@ export default function App() {
   // Modal State
   const [modalMovie, setModalMovie] = useState(null);
   const [modalPlayTrailer, setModalPlayTrailer] = useState(false);
+
+  // Toast notification state
+  const [toastMessage, setToastMessage] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  const showToast = useCallback((msg) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
+  }, []);
 
   const recsSectionRef = useRef(null);
   const transientTimerRef = useRef(null);
@@ -168,8 +196,9 @@ export default function App() {
       const data = await res.json();
       setPopularMovies(data);
 
-      // Hero switches to top popular movie if no picked movie
-      if (!pickedMovie && data.length > 0) {
+      // Hero switches to top popular movie only if no movie was picked or requested via URL
+      const hasUrlMovie = new URLSearchParams(window.location.search).has('movie');
+      if (!pickedMovieRef.current && !hasUrlMovie && data.length > 0) {
         setHeroMovie(data[0]);
       }
     } catch (err) {
@@ -178,7 +207,7 @@ export default function App() {
     } finally {
       setLoadingPopular(false);
     }
-  }, [getLangQuery, pickedMovie]);
+  }, [getLangQuery]);
 
   // Fetch Browse movies (when activeGenre or activeMood is set)
   const fetchBrowse = useCallback(async (genreName, moodName) => {
@@ -197,8 +226,9 @@ export default function App() {
       setBrowseMovies(data.items || []);
       setBrowseTotal(data.total || 0);
 
-      // Default hero shows top movie of that language + genre / mood
-      if (!pickedMovie && data.items && data.items.length > 0) {
+      // Default hero shows top movie of that language + genre / mood only if no picked movie
+      const hasUrlMovie = new URLSearchParams(window.location.search).has('movie');
+      if (!pickedMovieRef.current && !hasUrlMovie && data.items && data.items.length > 0) {
         setHeroMovie(data.items[0]);
       }
     } catch (err) {
@@ -428,22 +458,56 @@ export default function App() {
     recsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Support direct modal opening via ?movie=<id>
+  // Handle shared movie link via ?movie=<id>
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const movieIdParam = urlParams.get('movie');
-    if (movieIdParam) {
-      fetch(`/api/movie/${movieIdParam}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((m) => {
-          if (m) {
-            setModalMovie(m);
-            setModalPlayTrailer(false);
-          }
-        })
-        .catch((err) => console.error('Error opening movie from query param:', err));
-    }
-  }, []);
+    if (!movieIdParam) return;
+
+    fetch(`/api/movie/${movieIdParam}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((m) => {
+        if (m && m.id) {
+          // Switch language chip to All, reset genre & mood to null
+          setActiveChipId('all');
+          setActiveGenre(null);
+          setActiveMood(null);
+          try {
+            localStorage.setItem(STORAGE_CHIP_KEY, 'all');
+            localStorage.removeItem(STORAGE_GENRE_KEY);
+            localStorage.removeItem(STORAGE_MOOD_KEY);
+          } catch (e) {}
+
+          // Load movie in hero with two recommendation rows (no detail modal)
+          pickedMovieRef.current = m;
+          setPickedMovie(m);
+          setHeroMovie(m);
+          fetchRecommendationsForTarget(m);
+          setModalMovie(null);
+        } else {
+          // Unknown or invalid movie ID: fall back cleanly to default popular movie
+          fetch('/api/popular?n=1')
+            .then((r) => (r.ok ? r.json() : []))
+            .then((items) => {
+              if (items && items.length > 0 && !pickedMovieRef.current) {
+                setHeroMovie(items[0]);
+              }
+            })
+            .catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load movie from query param:', err);
+        fetch('/api/popular?n=1')
+          .then((r) => (r.ok ? r.json() : []))
+          .then((items) => {
+            if (items && items.length > 0 && !pickedMovieRef.current) {
+              setHeroMovie(items[0]);
+            }
+          })
+          .catch(() => {});
+      });
+  }, [fetchRecommendationsForTarget]);
 
   const currentCinemaLabel = activeChip.label === 'All' ? 'All Cinema' : activeChip.label;
 
@@ -500,6 +564,7 @@ export default function App() {
               movie={heroMovie}
               onOpenTrailer={handleOpenTrailer}
               onScrollToRecommendations={scrollToRecommendations}
+              onToast={showToast}
             />
           )
         )}
@@ -839,11 +904,43 @@ export default function App() {
           autoPlayTrailer={modalPlayTrailer}
           onClose={handleCloseModal}
           activeChipId={activeChipId}
+          onToast={showToast}
         />
       )}
 
       {/* Footer */}
       <Footer />
+
+      {/* Global Toast Notification */}
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            background: 'rgba(20, 20, 30, 0.95)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(139, 92, 246, 0.6)',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(124, 92, 255, 0.35)',
+            color: '#ffffff',
+            padding: '10px 20px',
+            borderRadius: 'var(--radius-pill)',
+            fontSize: '0.88rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            pointerEvents: 'none',
+          }}
+        >
+          <Check size={16} color="#4ade80" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

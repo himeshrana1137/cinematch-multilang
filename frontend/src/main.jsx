@@ -11,3 +11,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </FavoritesProvider>
   </React.StrictMode>
 );
+
+if ('serviceWorker' in navigator && (import.meta.env.PROD || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+

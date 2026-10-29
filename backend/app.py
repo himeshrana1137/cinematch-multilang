@@ -1,26 +1,29 @@
 import os
 import sys
+import html
+import re
 
 # Initialize app
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 # Load recommender
 from recommender import MovieRecommender
 
-# Initialize app
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+# Initialize paths
 ROOT_DIR = os.path.dirname(BACKEND_DIR)
 DIST_DIR = os.path.join(ROOT_DIR, "frontend", "dist")
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
 app = Flask(__name__, static_folder=DIST_DIR)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 CORS(app)
 
 # Initialize Recommender
@@ -221,6 +224,121 @@ def get_movie_detail(movie_id):
     return jsonify(card)
 
 
+INDEX_HTML_TEMPLATE = None
+
+
+def load_index_template():
+    global INDEX_HTML_TEMPLATE
+    index_file = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                INDEX_HTML_TEMPLATE = f.read()
+        except Exception as e:
+            print(f"Warning: Could not read index.html: {e}")
+    return INDEX_HTML_TEMPLATE
+
+
+# Load template into memory at startup (<50ms response)
+load_index_template()
+
+DEFAULT_OG_DESC = (
+    "Multi-Language Movie Discovery & Hybrid Content-Quality Recommender "
+    "covering Hollywood, Bollywood/Hindi, Gujarati, Tollywood, Kollywood, Mollywood and Kannada cinema."
+)
+DEFAULT_TITLE = "CineMatch — Multi-Language Movie Recommendations"
+
+
+def render_index_html(movie=None, movie_id=None):
+    template = INDEX_HTML_TEMPLATE or load_index_template()
+    if not template:
+        return (
+            "<h1>CineMatch Backend Running</h1>"
+            "<p>Frontend build (frontend/dist) not found. Run 'npm run build' in frontend directory.</p>"
+        ), 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    base_url = request.url_root.rstrip("/")
+    default_image = f"{base_url}/og-image.png"
+
+    if movie:
+        title = f"{movie.get('title', 'CineMatch')} — CineMatch"
+        raw_desc = movie.get("tagline") or movie.get("overview") or DEFAULT_OG_DESC
+        if raw_desc and len(raw_desc) > 150:
+            raw_desc = raw_desc[:150]
+        desc = raw_desc
+        image = movie.get("backdrop_url") or movie.get("poster_url") or default_image
+        url = f"{base_url}/?movie={movie_id}"
+    else:
+        title = DEFAULT_TITLE
+        desc = DEFAULT_OG_DESC
+        image = default_image
+        url = f"{base_url}/"
+
+    # HTML-escape all dynamic contents
+    escaped_title = html.escape(title, quote=True)
+    escaped_desc = html.escape(desc, quote=True)
+    escaped_image = html.escape(image, quote=True)
+    escaped_url = html.escape(url, quote=True)
+
+    # Replace <title>
+    content = re.sub(
+        r"<title>.*?</title>",
+        f"<title>{escaped_title}</title>",
+        template,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Replacement block for Open Graph & Twitter meta tags
+    meta_tags_block = (
+        f'    <!-- Open Graph / Facebook / WhatsApp -->\n'
+        f'    <meta property="og:type" content="website" />\n'
+        f'    <meta property="og:site_name" content="CineMatch" />\n'
+        f'    <meta property="og:title" content="{escaped_title}" />\n'
+        f'    <meta property="og:description" content="{escaped_desc}" />\n'
+        f'    <meta property="og:image" content="{escaped_image}" />\n'
+        f'    <meta property="og:url" content="{escaped_url}" />\n\n'
+        f'    <!-- Twitter -->\n'
+        f'    <meta name="twitter:card" content="summary_large_image" />\n'
+        f'    <meta name="twitter:title" content="{escaped_title}" />\n'
+        f'    <meta name="twitter:description" content="{escaped_desc}" />\n'
+        f'    <meta name="twitter:image" content="{escaped_image}" />'
+    )
+
+    pattern = r"<!-- Open Graph / Facebook / WhatsApp -->.*?<meta name=\"twitter:image\"[^>]*>"
+    if re.search(pattern, content, flags=re.DOTALL):
+        content = re.sub(pattern, meta_tags_block, content, flags=re.DOTALL)
+    else:
+        content = content.replace("</head>", f"{meta_tags_block}\n  </head>")
+
+    response = Response(content, status=200, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+# Specific routes for PWA and offline assets
+@app.route("/manifest.webmanifest")
+def serve_manifest():
+    response = send_from_directory(DIST_DIR, "manifest.webmanifest", mimetype="application/manifest+json")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.route("/sw.js")
+def serve_sw():
+    response = send_from_directory(DIST_DIR, "sw.js", mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.route("/offline.html")
+def serve_offline():
+    response = send_from_directory(DIST_DIR, "offline.html", mimetype="text/html; charset=utf-8")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # Serve React Frontend
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
@@ -228,16 +346,25 @@ def serve_frontend(path):
     if path.startswith("api/"):
         return jsonify({"error": "Not Found", "message": "API route not found"}), 404
 
-    if os.path.exists(DIST_DIR):
+    # If asking for static asset file directly (e.g. assets/*.js, icon-192.png, favicon.ico)
+    if path and os.path.exists(DIST_DIR):
         file_path = os.path.join(DIST_DIR, path)
-        if path and os.path.exists(file_path) and not os.path.isdir(file_path):
+        if os.path.exists(file_path) and not os.path.isdir(file_path):
             return send_from_directory(DIST_DIR, path)
-        return send_from_directory(DIST_DIR, "index.html")
-    
-    return (
-        "<h1>CineMatch Backend Running</h1>"
-        "<p>Frontend build (frontend/dist) not found. Run 'npm run build' in frontend directory.</p>"
-    ), 200
+
+    # For HTML navigations:
+    movie_id_param = request.args.get("movie")
+    movie = None
+    valid_mid = None
+    if movie_id_param:
+        try:
+            valid_mid = int(movie_id_param)
+            movie = recommender.get_movie(valid_mid)
+        except (ValueError, TypeError):
+            movie = None
+            valid_mid = None
+
+    return render_index_html(movie=movie, movie_id=valid_mid)
 
 
 if __name__ == "__main__":

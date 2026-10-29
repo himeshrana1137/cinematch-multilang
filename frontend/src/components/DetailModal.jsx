@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Play, Star, Clock, Calendar, Globe2, ExternalLink, User, Tv, Globe, Maximize, Heart } from 'lucide-react';
 import { useFavorites } from '../context/FavoritesContext';
+import ShareButton from './ShareButton';
 
 const LANG_NAME_MAP = {
   en: 'English',
@@ -12,7 +13,7 @@ const LANG_NAME_MAP = {
   kn: 'Kannada',
 };
 
-export default function DetailModal({ movie, onClose, autoPlayTrailer = false, activeChipId = 'all' }) {
+export default function DetailModal({ movie, onClose, autoPlayTrailer = false, activeChipId = 'all', onToast }) {
   const [showTrailer, setShowTrailer] = useState(autoPlayTrailer);
   const [details, setDetails] = useState(movie);
   const [loading, setLoading] = useState(false);
@@ -319,8 +320,16 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false, a
             </div>
           </div>
 
-          {/* Top Bar Right: My List Heart button & 44px Close button */}
+          {/* Top Bar Right: Share button, My List Heart button & 44px Close button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <ShareButton
+              movie={currentMovie}
+              onToast={onToast}
+              style={{
+                borderRadius: '50%',
+              }}
+            />
+
             <button
               type="button"
               onClick={() => toggleFavorite(currentMovie)}

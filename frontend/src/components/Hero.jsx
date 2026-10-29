@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Sparkles, Star, Globe2, Heart } from 'lucide-react';
 import { useFavorites } from '../context/FavoritesContext';
+import ShareButton from './ShareButton';
 
-export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }) {
+export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations, onToast }) {
   const { isFavorite, toggleFavorite } = useFavorites();
   const fav = movie ? isFavorite(movie.id) : false;
 
@@ -207,13 +208,20 @@ export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }
           </div>
         )}
 
-        {/* Action Buttons: Watch Trailer, More Like This & My List toggle (all 44px+ touch targets) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '430px' }}>
+        {/* Action Buttons: Watch Trailer, More Like This, My List toggle & Share (all 44px+ touch targets) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          width: '100%',
+          maxWidth: '480px',
+          flexWrap: 'wrap',
+        }}>
           <button
             onClick={() => onOpenTrailer(movie)}
             className="btn-primary"
             style={{
-              flex: 1,
+              flex: '1 1 120px',
               minHeight: '44px',
               padding: '10px 12px',
               fontSize: '0.86rem',
@@ -229,7 +237,7 @@ export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }
             onClick={onScrollToRecommendations}
             className="btn-secondary"
             style={{
-              flex: 1,
+              flex: '1 1 120px',
               minHeight: '44px',
               padding: '10px 12px',
               fontSize: '0.86rem',
@@ -241,32 +249,36 @@ export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }
             More Like This
           </button>
 
-          <button
-            type="button"
-            onClick={() => toggleFavorite(movie)}
-            className="btn-secondary"
-            aria-label={fav ? 'Remove from My List' : 'Add to My List'}
-            aria-pressed={fav}
-            title={fav ? 'In My List' : 'Add to My List'}
-            style={{
-              width: '44px',
-              height: '44px',
-              minWidth: '44px',
-              minHeight: '44px',
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 'var(--radius-pill)',
-              color: fav ? '#ff4b72' : '#ffffff',
-              borderColor: fav ? 'rgba(255, 75, 114, 0.6)' : undefined,
-              background: fav ? 'rgba(255, 75, 114, 0.2)' : undefined,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <Heart size={18} fill={fav ? '#ff4b72' : 'transparent'} color={fav ? '#ff4b72' : '#ffffff'} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(movie)}
+              className="btn-secondary"
+              aria-label={fav ? 'Remove from My List' : 'Add to My List'}
+              aria-pressed={fav}
+              title={fav ? 'In My List' : 'Add to My List'}
+              style={{
+                width: '44px',
+                height: '44px',
+                minWidth: '44px',
+                minHeight: '44px',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 'var(--radius-pill)',
+                color: fav ? '#ff4b72' : '#ffffff',
+                borderColor: fav ? 'rgba(255, 75, 114, 0.6)' : undefined,
+                background: fav ? 'rgba(255, 75, 114, 0.2)' : undefined,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <Heart size={18} fill={fav ? '#ff4b72' : 'transparent'} color={fav ? '#ff4b72' : '#ffffff'} />
+            </button>
+
+            <ShareButton movie={movie} onToast={onToast} />
+          </div>
         </div>
       </div>
     </div>

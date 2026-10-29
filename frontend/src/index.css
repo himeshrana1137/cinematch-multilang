@@ -754,3 +754,121 @@ html, body {
     filter: drop-shadow(0 2px 14px rgba(245, 185, 66, 0.45));
   }
 }
+
+/* Surprise Me responsive layout */
+.desktop-surprise-wrap {
+  display: block;
+}
+.mobile-surprise-wrap {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  .desktop-surprise-wrap {
+    display: none;
+  }
+  .mobile-surprise-wrap {
+    display: block;
+  }
+}
+
+/* Spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-animate {
+  animation: spin 1s linear infinite;
+}
+
+/* Ultra-compact phone width: hide wordmark below 380px so 4 action icons fit cleanly */
+@media (max-width: 379.98px) {
+  .nav-wordmark {
+    display: none !important;
+  }
+}
+
+/* Match ring badge position under heart button */
+.match-ring-badge {
+  position: absolute;
+  top: 46px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 640px) {
+  .match-ring-badge {
+    width: 30px;
+    height: 30px;
+    top: 44px;
+    right: 6px;
+  }
+}
+
+/* My List Button responsive styles */
+.nav-mylist-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.nav-mylist-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.nav-mylist-btn.is-active {
+  background: rgba(255, 75, 114, 0.22);
+  border-color: rgba(255, 75, 114, 0.5);
+  color: #ffffff;
+}
+
+/* Below 900px: Icon-only 44x44 circle */
+@media (max-width: 899.98px) {
+  .nav-mylist-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+  }
+  .mylist-btn-desktop-content {
+    display: none !important;
+  }
+}
+
+/* 900px and up: Pill button with text */
+@media (min-width: 900px) {
+  .nav-mylist-btn {
+    height: 40px;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: var(--radius-pill);
+    gap: 6px;
+    font-size: 0.86rem;
+  }
+  .mylist-btn-desktop-content {
+    display: inline;
+    font-weight: 500;
+  }
+}

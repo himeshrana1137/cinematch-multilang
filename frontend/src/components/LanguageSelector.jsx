@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Globe, Info } from 'lucide-react';
+import SurpriseButton from './SurpriseButton';
 
 export const CHIPS = [
   { id: 'all', label: 'All', queryValue: '' },
@@ -13,11 +14,17 @@ export const CHIPS = [
   { id: 'kn', label: 'Kannada', queryValue: 'kn' },
 ];
 
-export default function LanguageSelector({ activeChipId, onSelectChip, transientNote }) {
+export default function LanguageSelector({
+  activeChipId,
+  onSelectChip,
+  transientNote,
+  onSurprise,
+  loadingSurprise = false,
+}) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   return (
-    <div style={{ width: '100%', marginBottom: '20px' }}>
+    <div style={{ width: '100%', marginBottom: '16px' }}>
       {/* Shortened 11-12px Header + Transient Note */}
       <div style={{
         display: 'flex',
@@ -53,7 +60,7 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
       </div>
 
       {/* Single-select Pill Chips with soft edge fade hint */}
-      <div className="chips-scroll-wrapper" style={{ marginBottom: '8px' }}>
+      <div className="chips-scroll-wrapper" style={{ marginBottom: '10px' }}>
         <div className="chips-scroll-container">
           {CHIPS.map((chip) => {
             const isActive = chip.id === activeChipId;
@@ -61,7 +68,9 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
             return (
               <button
                 key={chip.id}
+                type="button"
                 onClick={() => onSelectChip(chip.id)}
+                aria-pressed={isActive}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -93,60 +102,85 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
         <div className="chips-scroll-fade-right" />
       </div>
 
-      {/* Hybrid Info Line (12px) - Icon placed BEFORE text, aligned to first line */}
-      <div style={{
+      {/* Hybrid Info Line (12px) & Desktop Surprise Button */}
+      <div className="info-and-surprise-row" style={{
         display: 'flex',
-        alignItems: 'flex-start',
-        gap: '6px',
-        fontSize: '12px',
-        color: 'var(--text-muted)',
-        position: 'relative',
-        lineHeight: 1.4,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        flexWrap: 'wrap',
       }}>
-        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0, marginTop: '1px' }}>
-          <button
-            onClick={() => setShowTooltip(!showTooltip)}
-            onMouseEnter={() => setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
-            aria-label="Information on hybrid recommendations"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '1px',
-              borderRadius: '4px',
-            }}
-          >
-            <Info size={13} color="var(--accent-violet)" />
-          </button>
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '6px',
+          fontSize: '12px',
+          color: 'var(--text-muted)',
+          position: 'relative',
+          lineHeight: 1.4,
+          flex: 1,
+          minWidth: '220px',
+        }}>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0, marginTop: '1px' }}>
+            <button
+              type="button"
+              onClick={() => setShowTooltip(!showTooltip)}
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              aria-label="Information on hybrid recommendations"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '1px',
+                borderRadius: '4px',
+              }}
+            >
+              <Info size={13} color="var(--accent-violet)" />
+            </button>
 
-          {showTooltip && (
-            <div style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              left: 0,
-              width: '280px',
-              background: '#151520',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '10px',
-              padding: '10px 12px',
-              fontSize: '12px',
-              lineHeight: 1.45,
-              color: '#d1d5db',
-              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.9)',
-              zIndex: 70,
-            }}>
-              CineMatch blends plot, cast, and genre TF-IDF matching with Bayesian IMDb quality ratings and popularity.
-            </div>
-          )}
+            {showTooltip && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                width: '280px',
+                background: '#151520',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '12px',
+                lineHeight: 1.45,
+                color: '#d1d5db',
+                boxShadow: '0 12px 30px rgba(0, 0, 0, 0.9)',
+                zIndex: 70,
+              }}>
+                CineMatch blends plot, cast, and genre TF-IDF matching with Bayesian IMDb quality ratings and popularity.
+              </div>
+            )}
+          </div>
+
+          <span>Hybrid recommendations: 70% content + 30% quality score</span>
         </div>
 
-        <span>Hybrid recommendations: 70% content + 30% quality score</span>
+        {/* Desktop Surprise Me (hidden on mobile via CSS) */}
+        {onSurprise && (
+          <div className="desktop-surprise-wrap">
+            <SurpriseButton onSurprise={onSurprise} loading={loadingSurprise} />
+          </div>
+        )}
       </div>
+
+      {/* Mobile Surprise Me (hidden on desktop via CSS, full width) */}
+      {onSurprise && (
+        <div className="mobile-surprise-wrap" style={{ marginTop: '12px' }}>
+          <SurpriseButton onSurprise={onSurprise} loading={loadingSurprise} fullWidth />
+        </div>
+      )}
     </div>
   );
 }

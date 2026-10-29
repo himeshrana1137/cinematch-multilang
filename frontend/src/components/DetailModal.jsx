@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Play, Star, Clock, Calendar, Globe2, ExternalLink, User, Tv, Globe, Maximize } from 'lucide-react';
+import { X, Play, Star, Clock, Calendar, Globe2, ExternalLink, User, Tv, Globe, Maximize, Heart } from 'lucide-react';
+import { useFavorites } from '../context/FavoritesContext';
 
 const LANG_NAME_MAP = {
   en: 'English',
@@ -96,6 +97,8 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false, a
   }, []);
 
   const currentMovie = details || movie;
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const fav = currentMovie ? isFavorite(currentMovie.id) : false;
   const trailers = currentMovie?.trailers || [];
   const movieOrigLang = currentMovie?.language || 'en';
 
@@ -316,31 +319,60 @@ export default function DetailModal({ movie, onClose, autoPlayTrailer = false, a
             </div>
           </div>
 
-          {/* 44px Close Button */}
-          <button
-            onClick={onClose}
-            aria-label="Close modal"
-            style={{
-              width: '44px',
-              height: '44px',
-              minWidth: '44px',
-              minHeight: '44px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-              transition: 'background 0.2s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-violet)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
-          >
-            <X size={20} />
-          </button>
+          {/* Top Bar Right: My List Heart button & 44px Close button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(currentMovie)}
+              aria-label={fav ? 'Remove from My List' : 'Add to My List'}
+              aria-pressed={fav}
+              title={fav ? 'In My List' : 'Add to My List'}
+              style={{
+                width: '44px',
+                height: '44px',
+                minWidth: '44px',
+                minHeight: '44px',
+                borderRadius: '50%',
+                background: fav ? 'rgba(255, 75, 114, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                border: fav ? '1px solid rgba(255, 75, 114, 0.55)' : '1px solid rgba(255, 255, 255, 0.15)',
+                color: fav ? '#ff4b72' : '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+                transition: 'all 0.2s',
+              }}
+            >
+              <Heart size={18} fill={fav ? '#ff4b72' : 'transparent'} color={fav ? '#ff4b72' : '#ffffff'} />
+            </button>
+
+            {/* 44px Close Button */}
+            <button
+              onClick={onClose}
+              aria-label="Close modal"
+              style={{
+                width: '44px',
+                height: '44px',
+                minWidth: '44px',
+                minHeight: '44px',
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-violet)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; }}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* 16:9 YouTube Player (EDGE TO EDGE on mobile portrait) */}

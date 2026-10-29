@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Star, Globe2 } from 'lucide-react';
+import { Play, Sparkles, Star, Globe2, Heart } from 'lucide-react';
+import { useFavorites } from '../context/FavoritesContext';
 
 export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }) {
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const fav = movie ? isFavorite(movie.id) : false;
+
   const [currentBackdrop, setCurrentBackdrop] = useState(movie?.backdrop_url || movie?.poster_url);
   const [fading, setFading] = useState(false);
 
@@ -203,16 +207,16 @@ export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }
           </div>
         )}
 
-        {/* Action Buttons: side by side, equal width, 44px+ height, short labels */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', maxWidth: '380px' }}>
+        {/* Action Buttons: Watch Trailer, More Like This & My List toggle (all 44px+ touch targets) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '430px' }}>
           <button
             onClick={() => onOpenTrailer(movie)}
             className="btn-primary"
             style={{
               flex: 1,
               minHeight: '44px',
-              padding: '10px 14px',
-              fontSize: '0.88rem',
+              padding: '10px 12px',
+              fontSize: '0.86rem',
               justifyContent: 'center',
               whiteSpace: 'nowrap',
             }}
@@ -227,14 +231,41 @@ export default function Hero({ movie, onOpenTrailer, onScrollToRecommendations }
             style={{
               flex: 1,
               minHeight: '44px',
-              padding: '10px 14px',
-              fontSize: '0.88rem',
+              padding: '10px 12px',
+              fontSize: '0.86rem',
               justifyContent: 'center',
               whiteSpace: 'nowrap',
             }}
           >
             <Sparkles size={16} color="var(--accent-gold)" />
             More Like This
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleFavorite(movie)}
+            className="btn-secondary"
+            aria-label={fav ? 'Remove from My List' : 'Add to My List'}
+            aria-pressed={fav}
+            title={fav ? 'In My List' : 'Add to My List'}
+            style={{
+              width: '44px',
+              height: '44px',
+              minWidth: '44px',
+              minHeight: '44px',
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 'var(--radius-pill)',
+              color: fav ? '#ff4b72' : '#ffffff',
+              borderColor: fav ? 'rgba(255, 75, 114, 0.6)' : undefined,
+              background: fav ? 'rgba(255, 75, 114, 0.2)' : undefined,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <Heart size={18} fill={fav ? '#ff4b72' : 'transparent'} color={fav ? '#ff4b72' : '#ffffff'} />
           </button>
         </div>
       </div>

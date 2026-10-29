@@ -1,8 +1,12 @@
 import React from 'react';
-import { Star, Film, Eye, Sparkles } from 'lucide-react';
+import { Star, Film, Eye, Sparkles, Heart } from 'lucide-react';
+import { useFavorites } from '../context/FavoritesContext';
 
 export default function MovieCard({ movie, onSelect, onOpenDetails, isSelected }) {
   if (!movie) return null;
+
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const fav = isFavorite(movie.id);
 
   const matchPercent = movie.match_percent;
   const radius = 13;
@@ -68,6 +72,55 @@ export default function MovieCard({ movie, onSelect, onOpenDetails, isSelected }
         }}>
           {movie.language_name}
         </div>
+
+        {/* Top-Right Heart Button (44px tap target) */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFavorite(movie);
+          }}
+          aria-label={fav ? 'Remove from My List' : 'Add to My List'}
+          aria-pressed={fav}
+          style={{
+            position: 'absolute',
+            top: '2px',
+            right: '2px',
+            width: '44px',
+            height: '44px',
+            minWidth: '44px',
+            minHeight: '44px',
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: fav ? '#ff4b72' : '#ffffff',
+            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))',
+          }}
+        >
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            background: fav ? 'rgba(255, 75, 114, 0.25)' : 'rgba(10, 10, 15, 0.65)',
+            backdropFilter: 'blur(6px)',
+            border: fav ? '1px solid rgba(255, 75, 114, 0.6)' : '1px solid rgba(255, 255, 255, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.18s ease',
+          }}>
+            <Heart
+              size={16}
+              fill={fav ? '#ff4b72' : 'transparent'}
+              color={fav ? '#ff4b72' : '#ffffff'}
+            />
+          </div>
+        </button>
 
         {/* Smaller Match Ring SVG Badge */}
         {typeof matchPercent === 'number' && (
@@ -203,6 +256,25 @@ export default function MovieCard({ movie, onSelect, onOpenDetails, isSelected }
 
       {/* Card Info Below Poster: Permanently visible on touch/mobile without hover */}
       <div style={{ padding: '8px 6px 4px 6px' }}>
+        {movie.because_title && (
+          <div style={{
+            fontSize: '0.68rem',
+            color: 'var(--accent-gold)',
+            fontWeight: 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            marginBottom: '3px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+          }}>
+            <Sparkles size={11} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Because: {movie.because_title}
+            </span>
+          </div>
+        )}
         <h3 style={{
           fontSize: '0.85rem',
           fontWeight: 600,

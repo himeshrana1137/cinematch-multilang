@@ -15,6 +15,51 @@ ALLOWED_LANGUAGES = {
     "kn": "Kannada"
 }
 
+MOOD_DEFINITIONS = {
+    "Feel-good": {
+        "label": "Feel-good",
+        "any": {"Comedy", "Family", "Animation"},
+        "exclude": {"Horror", "War", "Crime"},
+        "boost": set()
+    },
+    "Thrilling": {
+        "label": "Thrilling",
+        "any": {"Thriller", "Action", "Crime", "Mystery"},
+        "exclude": {"Family", "Animation"},
+        "boost": set()
+    },
+    "Romantic": {
+        "label": "Romantic",
+        "any": {"Romance"},
+        "exclude": set(),
+        "boost": {"Drama", "Comedy"}
+    },
+    "Scary": {
+        "label": "Scary",
+        "any": {"Horror"},
+        "exclude": set(),
+        "boost": {"Thriller", "Mystery"}
+    },
+    "Family night": {
+        "label": "Family night",
+        "any": {"Family", "Animation"},
+        "exclude": {"Horror"},
+        "boost": {"Adventure", "Comedy"}
+    },
+    "Mind-bending": {
+        "label": "Mind-bending",
+        "any": {"Science Fiction", "Mystery"},
+        "exclude": set(),
+        "boost": {"Thriller"}
+    },
+    "Emotional": {
+        "label": "Emotional",
+        "any": {"Drama"},
+        "exclude": {"Horror", "Action"},
+        "boost": {"Romance"}
+    }
+}
+
 
 def normalize_text(text):
     if not text:
@@ -45,6 +90,8 @@ class MovieRecommender:
         self.quality_scores = None
         self.language_counts = {}
         self.search_index = []
+        self.mood_masks = {}
+        self.mood_scores = {}
         self.load_and_fit()
 
     def load_and_fit(self):
@@ -179,7 +226,26 @@ class MovieRecommender:
                 "popularity": float(m.get("popularity", 0.0))
             })
 
-        print("Recommender TF-IDF, Quality matrix, and Search index fitted successfully.")
+        # Precompute mood boolean masks and boost scores
+        self.mood_masks = {}
+        self.mood_scores = {}
+        for mood_key, mdef in MOOD_DEFINITIONS.items():
+            mask = np.zeros(len(self.movies), dtype=bool)
+            scores = np.zeros(len(self.movies), dtype=np.int32)
+            any_set = mdef["any"]
+            exclude_set = mdef["exclude"]
+            boost_set = mdef["boost"]
+            for idx, m in enumerate(self.movies):
+                gset = set(m.get("genres", []))
+                matched_any = len(gset & any_set)
+                has_exclude = bool(gset & exclude_set)
+                if matched_any > 0 and not has_exclude:
+                    mask[idx] = True
+                    scores[idx] = matched_any + len(gset & boost_set)
+            self.mood_masks[mood_key] = mask
+            self.mood_scores[mood_key] = scores
+
+        print("Recommender TF-IDF, Quality matrix, Search index, and Mood masks fitted successfully.")
 
     def get_movie(self, movie_id):
         try:
@@ -428,13 +494,237 @@ class MovieRecommender:
 
         return sorted_genres
 
-    def browse(self, languages=None, genre=None, offset=0, limit=24):
+    def get_cards(self, ids):
+        if not ids or not isinstance(ids, list):
+            return []
+        cards = []
+        for x in ids[:100]:
+            try:
+                mid = int(x)
+            except (ValueError, TypeError):
+                continue
+            m = self.movie_map.get(mid)
+            if m:
+                cards.append(self.format_card(m))
+        return cards
+
+    def picked_for_you(self, ids, languages=None, n=12):
+        if not self.movies or self.tfidf_matrix is None:
+            return []
+
+        if not ids or not isinstance(ids, list):
+            return self.get_popular(languages=languages, n=n)
+
+        valid_ids = []
+        for x in ids:
+            try:
+                mid = int(x)
+                valid_ids.append(mid)
+            except (ValueError, TypeError):
+                continue
+
+        existing_ids = [mid for mid in valid_ids if mid in self.id_to_idx]
+        if not existing_ids:
+            pop_cards = self.get_popular(languages=languages, n=n)
+            for card in pop_cards:
+                card["because_title"] = None
+            return pop_cards
+
+        # Top 10 most recent favourites
+        top_favs = existing_ids[:10]
+        k_count = len(top_favs)
+        fav_indices = [self.id_to_idx[mid] for mid in top_favs]
+        weights = [k_count - k for k in range(k_count)]
+        sum_w = float(sum(weights))
+
+        weighted_sim = np.zeros(len(self.movies), dtype=np.float32)
+        max_sim = np.full(len(self.movies), -1.0, dtype=np.float32)
+        best_fav_idx = np.full(len(self.movies), fav_indices[0], dtype=np.int32)
+
+        for fav_idx, w in zip(fav_indices, weights):
+            vec = self.tfidf_matrix[fav_idx]
+            sim_k = self.tfidf_matrix.dot(vec.T).toarray().ravel()
+            weighted_sim += float(w) * sim_k
+            higher = sim_k > max_sim
+            max_sim[higher] = sim_k[higher]
+            best_fav_idx[higher] = fav_idx
+
+        weighted_sim /= sum_w
+
+        fav_id_set = set(valid_ids)
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+
+        cand_indices = []
+        cand_content = []
+        cand_quality = []
+        cand_best_fav = []
+
+        for idx in range(len(self.movies)):
+            m = self.movies[idx]
+            if m["id"] in fav_id_set:
+                continue
+            if lang_set and m.get("language", "").lower() not in lang_set:
+                continue
+            cand_indices.append(idx)
+            cand_content.append(weighted_sim[idx])
+            cand_quality.append(self.quality_scores[idx])
+            cand_best_fav.append(best_fav_idx[idx])
+
+        if not cand_indices:
+            return []
+
+        c_arr = np.array(cand_content, dtype=np.float32)
+        q_arr = np.array(cand_quality, dtype=np.float32)
+
+        # Min-max normalize content
+        c_min, c_max = np.min(c_arr), np.max(c_arr)
+        if c_max > c_min:
+            c_norm = (c_arr - c_min) / (c_max - c_min + 1e-6)
+        else:
+            c_norm = np.zeros_like(c_arr)
+
+        # Min-max normalize quality
+        q_min, q_max = np.min(q_arr), np.max(q_arr)
+        if q_max > q_min:
+            q_norm = (q_arr - q_min) / (q_max - q_min + 1e-6)
+        else:
+            q_norm = q_arr
+
+        # Fixed blend: 0.7 * content + 0.3 * quality
+        hybrid = 0.7 * c_norm + 0.3 * q_norm
+
+        # Scale to match percentage (65% to 99%)
+        h_min, h_max = np.min(hybrid), np.max(hybrid)
+        if h_max > h_min:
+            scaled = (hybrid - h_min) / (h_max - h_min + 1e-6)
+            match_pcts = 65 + (scaled * 34)
+        else:
+            match_pcts = np.full_like(hybrid, 80.0)
+
+        sorted_order = np.argsort(-hybrid)
+
+        results = []
+        for i in sorted_order[:n]:
+            orig_idx = cand_indices[i]
+            m = self.movies[orig_idx]
+            match_pct = int(round(match_pcts[i]))
+            card = self.format_card(m, match_percent=match_pct)
+            best_fav = self.movies[cand_best_fav[i]]
+            card["because_title"] = best_fav.get("title", "")
+            results.append(card)
+
+        return results
+
+    def get_moods(self, languages=None):
+        if not self.movies:
+            return []
+
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+        if lang_set:
+            lang_mask = np.array([m.get("language", "").lower() in lang_set for m in self.movies], dtype=bool)
+        else:
+            lang_mask = np.ones(len(self.movies), dtype=bool)
+
+        results = []
+        for key, mdef in MOOD_DEFINITIONS.items():
+            if key in self.mood_masks:
+                mask = self.mood_masks[key] & lang_mask
+                count = int(np.sum(mask))
+                if count > 0:
+                    results.append({
+                        "key": key,
+                        "label": mdef["label"],
+                        "count": count
+                    })
+        return results
+
+    def surprise(self, languages=None, genre=None, mood=None, exclude=None):
+        if not self.movies:
+            return None
+
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+        exclude_set = set()
+        if exclude:
+            for x in exclude:
+                try:
+                    exclude_set.add(int(x))
+                except (ValueError, TypeError):
+                    pass
+
+        candidates = []
+        for idx, m in enumerate(self.movies):
+            if m["id"] in exclude_set:
+                continue
+            if lang_set and m.get("language", "").lower() not in lang_set:
+                continue
+            if genre and genre not in m.get("genres", []):
+                continue
+            if mood and mood in self.mood_masks:
+                if not self.mood_masks[mood][idx]:
+                    continue
+            candidates.append((idx, m))
+
+        if not candidates:
+            return None
+
+        # Quality pool: vote_average >= 6.5 and vote_count >= 100
+        quality_candidates = [
+            m for idx, m in candidates
+            if m.get("vote_average", 0.0) >= 6.5 and m.get("vote_count", 0) >= 100
+        ]
+
+        if len(quality_candidates) < 20:
+            candidates.sort(key=lambda item: self.quality_scores[item[0]], reverse=True)
+            cutoff = max(1, len(candidates) // 2)
+            pool = [m for idx, m in candidates[:cutoff]]
+        else:
+            pool = quality_candidates
+
+        if not pool:
+            return None
+
+        chosen_idx = np.random.randint(len(pool))
+        chosen_movie = pool[chosen_idx]
+        return self.format_card(chosen_movie)
+
+    def browse(self, languages=None, genre=None, mood=None, offset=0, limit=24):
         if not self.movies or self.quality_scores is None:
             return {"total": 0, "offset": offset, "limit": limit, "items": []}
 
-        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
-        genre_str = genre.strip() if genre else None
+        if genre and mood:
+            raise ValueError("genre and mood cannot be used together")
 
+        lang_set = set([l.strip().lower() for l in languages if l.strip()]) if languages else None
+
+        if mood:
+            if mood not in self.mood_masks:
+                return {"total": 0, "offset": offset, "limit": limit, "items": []}
+            candidates = []
+            mask = self.mood_masks[mood]
+            scores = self.mood_scores[mood]
+            for idx, m in enumerate(self.movies):
+                if lang_set and m.get("language", "").lower() not in lang_set:
+                    continue
+                if not mask[idx]:
+                    continue
+                score_count = int(scores[idx])
+                q_score = float(self.quality_scores[idx])
+                pop_score = float(m.get("popularity", 0.0))
+                candidates.append((score_count, q_score, pop_score, m))
+
+            # Matching: at least one any genre, none of exclude genres, ordered by matched any + boost count, then quality score
+            candidates.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+            total = len(candidates)
+            sliced = candidates[offset : offset + limit]
+            items = [self.format_card(m) for _, _, _, m in sliced]
+            return {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "items": items
+            }
+
+        genre_str = genre.strip() if genre else None
         candidates = []
         for idx, m in enumerate(self.movies):
             if lang_set and m.get("language", "").lower() not in lang_set:

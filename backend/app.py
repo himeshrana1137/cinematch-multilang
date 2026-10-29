@@ -98,10 +98,22 @@ def get_genres():
     return jsonify(genres)
 
 
+@app.route("/api/moods", methods=["GET"])
+def get_moods():
+    languages = parse_languages_param(request.args.get("languages"))
+    moods = recommender.get_moods(languages=languages)
+    return jsonify(moods)
+
+
 @app.route("/api/browse", methods=["GET"])
 def browse():
     languages = parse_languages_param(request.args.get("languages"))
     genre = request.args.get("genre")
+    mood = request.args.get("mood")
+
+    if genre and mood:
+        return jsonify({"error": "Bad Request", "message": "genre and mood cannot be used together"}), 400
+
     try:
         offset = int(request.args.get("offset", 0))
     except ValueError:
@@ -113,8 +125,57 @@ def browse():
     offset = max(0, offset)
     limit = max(1, min(limit, 100))
 
-    data = recommender.browse(languages=languages, genre=genre, offset=offset, limit=limit)
+    try:
+        data = recommender.browse(languages=languages, genre=genre, mood=mood, offset=offset, limit=limit)
+    except ValueError as e:
+        return jsonify({"error": "Bad Request", "message": str(e)}), 400
+
     return jsonify(data)
+
+
+@app.route("/api/cards", methods=["POST"])
+def get_cards():
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data.get("ids"), list):
+        return jsonify({"error": "Bad Request", "message": "JSON body must contain an 'ids' list"}), 400
+    cards = recommender.get_cards(data["ids"])
+    return jsonify(cards)
+
+
+@app.route("/api/for_you", methods=["POST"])
+def for_you():
+    data = request.get_json(silent=True)
+    if data is None or not isinstance(data, dict) or "ids" not in data or not isinstance(data.get("ids"), list):
+        return jsonify({"error": "Bad Request", "message": "JSON body must contain an 'ids' list"}), 400
+
+    ids = data.get("ids", [])
+    languages = parse_languages_param(data.get("languages"))
+    try:
+        n = int(data.get("n", 12))
+    except (ValueError, TypeError):
+        n = 12
+    n = max(1, min(n, 100))
+
+    results = recommender.picked_for_you(ids=ids, languages=languages, n=n)
+    return jsonify(results)
+
+
+@app.route("/api/surprise", methods=["GET"])
+def surprise():
+    languages = parse_languages_param(request.args.get("languages"))
+    genre = request.args.get("genre")
+    mood = request.args.get("mood")
+
+    if genre and mood:
+        return jsonify({"error": "Bad Request", "message": "genre and mood cannot be used together"}), 400
+
+    exclude_raw = request.args.get("exclude")
+    exclude = [x.strip() for x in exclude_raw.split(",") if x.strip()] if exclude_raw else None
+
+    card = recommender.surprise(languages=languages, genre=genre, mood=mood, exclude=exclude)
+    if not card:
+        return jsonify({"error": "Not Found", "message": "No movies found matching criteria"}), 404
+    return jsonify(card)
 
 
 @app.route("/api/recommend", methods=["GET"])

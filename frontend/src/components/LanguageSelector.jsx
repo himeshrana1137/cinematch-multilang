@@ -93,18 +93,17 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
         <div className="chips-scroll-fade-right" />
       </div>
 
-      {/* Hybrid Info Line (12px) */}
+      {/* Hybrid Info Line (12px) - Icon placed BEFORE text, aligned to first line */}
       <div style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: '6px',
         fontSize: '12px',
         color: 'var(--text-muted)',
         position: 'relative',
-        flexWrap: 'wrap',
+        lineHeight: 1.4,
       }}>
-        <span>Hybrid recommendations: 70% content + 30% quality score</span>
-        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0, marginTop: '1px' }}>
           <button
             onClick={() => setShowTooltip(!showTooltip)}
             onMouseEnter={() => setShowTooltip(true)}
@@ -117,7 +116,9 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              padding: '2px',
+              justifyContent: 'center',
+              padding: '1px',
+              borderRadius: '4px',
             }}
           >
             <Info size={13} color="var(--accent-violet)" />
@@ -143,6 +144,8 @@ export default function LanguageSelector({ activeChipId, onSelectChip, transient
             </div>
           )}
         </div>
+
+        <span>Hybrid recommendations: 70% content + 30% quality score</span>
       </div>
     </div>
   );

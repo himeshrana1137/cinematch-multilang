@@ -8,7 +8,7 @@ import DetailModal from './components/DetailModal';
 import { CardSkeleton, CarouselSkeleton, HeroSkeleton } from './components/SkeletonLoader';
 import ErrorBanner from './components/ErrorBanner';
 import Footer from './components/Footer';
-import { Sparkles, TrendingUp, Film, RefreshCw } from 'lucide-react';
+import { Sparkles, TrendingUp, Film, RefreshCw, X } from 'lucide-react';
 
 const STORAGE_CHIP_KEY = 'cinematch_active_chip';
 const STORAGE_GENRE_KEY = 'cinematch_active_genre';
@@ -386,16 +386,48 @@ export default function App() {
         {/* Case A: A Genre is active -> Responsive Grid with Load More */}
         {activeGenre ? (
           <section style={{ marginBottom: '40px' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Film size={20} color="var(--accent-violet)" />
-                <h2 className="cinematic-serif" style={{ fontSize: 'clamp(1.3rem, 4vw, 1.7rem)', fontWeight: 700, color: '#ffffff', margin: 0 }}>
-                  {activeGenre} movies
-                </h2>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              marginBottom: '16px',
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Film size={20} color="var(--accent-violet)" style={{ flexShrink: 0 }} />
+                  <h2 className="cinematic-serif" style={{ fontSize: 'clamp(1.25rem, 4vw, 1.7rem)', fontWeight: 700, color: '#ffffff', margin: 0, wordBreak: 'break-word' }}>
+                    {activeGenre} movies
+                  </h2>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginTop: '4px', margin: '4px 0 0 0' }}>
+                  {currentCinemaLabel} &bull; {browseTotal} movies
+                </p>
               </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginTop: '4px' }}>
-                {currentCinemaLabel} &bull; {browseTotal} movies
-              </p>
+
+              {/* Clear Genre Button (44px tap target, right-aligned) */}
+              <button
+                onClick={() => handleSelectGenre(null)}
+                aria-label="Clear genre"
+                className="btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '0 14px',
+                  minHeight: '44px',
+                  height: '44px',
+                  fontSize: '0.84rem',
+                  fontWeight: 500,
+                  borderRadius: 'var(--radius-pill)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={15} />
+                <span>Clear</span>
+              </button>
             </div>
 
             {loadingBrowse ? (

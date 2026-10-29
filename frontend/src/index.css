@@ -260,33 +260,54 @@ html, body {
   display: flex;
   position: relative;
   width: 100%;
-  min-width: 420px;
-  max-width: 480px;
+  min-width: 200px;
+  max-width: 400px;
+  flex: 1;
 }
 
 .mobile-search-trigger {
   display: none;
 }
 
-/* Developer Label styles */
-.dev-label-desktop {
-  display: flex;
+/* Genres Button responsive styles */
+.nav-genres-btn {
+  display: inline-flex;
   align-items: center;
-}
-.dev-label-mobile {
-  display: none;
+  justify-content: center;
+  position: relative;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
 }
 
-@media (max-width: 640px) {
-  .dev-label-desktop {
-    display: none !important;
-  }
-  .dev-label-mobile {
-    display: block !important;
-  }
+.nav-genres-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.nav-genres-btn.is-active {
+  background: rgba(124, 92, 255, 0.28);
+  border-color: var(--accent-violet);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.nav-genres-btn.is-active:hover {
+  background: rgba(124, 92, 255, 0.38);
+}
+
+/* Below 900px: Icon-only, 44x44 circular tap target */
+@media (max-width: 899.98px) {
   .desktop-search-wrap {
     display: none !important;
   }
+
   .mobile-search-trigger {
     display: flex !important;
     align-items: center;
@@ -301,6 +322,48 @@ html, body {
     color: #ffffff;
     cursor: pointer;
     transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .mobile-search-trigger:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .nav-genres-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  .genres-btn-dot-badge {
+    display: block !important;
+  }
+
+  .genres-btn-desktop-content {
+    display: none !important;
+  }
+}
+
+/* 900px and up: Pill button with text and chevron */
+@media (min-width: 900px) {
+  .nav-genres-btn {
+    height: 40px;
+    min-height: 40px;
+    padding: 0 14px;
+    gap: 6px;
+  }
+
+  .genres-btn-dot-badge {
+    display: none !important;
+  }
+
+  .genres-btn-desktop-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 }
 
@@ -662,4 +725,32 @@ html, body {
   background-size: 200% 100%;
   animation: shimmer 1.8s infinite linear;
   border-radius: var(--radius-card);
+}
+
+/* Developer Credit in Footer */
+.dev-credit-name {
+  font-size: 44px;
+}
+
+@media (max-width: 640px) {
+  .dev-credit-name {
+    font-size: 34px;
+  }
+}
+
+/* Subtle Shimmer for Name (disabled on prefers-reduced-motion) */
+@media (prefers-reduced-motion: no-preference) {
+  .dev-credit-name {
+    background-size: 200% auto;
+    animation: devNameShimmer 5s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes devNameShimmer {
+  0% {
+    filter: drop-shadow(0 2px 8px rgba(124, 92, 255, 0.3));
+  }
+  100% {
+    filter: drop-shadow(0 2px 14px rgba(245, 185, 66, 0.45));
+  }
 }

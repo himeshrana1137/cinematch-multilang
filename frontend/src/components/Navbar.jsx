@@ -64,7 +64,7 @@ export default function Navbar({
       const searchParam = urlParams.get('search');
       if (searchParam) {
         setQuery(searchParam);
-        if (window.innerWidth < 640) {
+        if (window.innerWidth < 900) {
           setIsMobileSearchOpen(true);
         } else {
           setIsOpen(true);
@@ -73,6 +73,21 @@ export default function Navbar({
     } catch (e) {
       console.warn('Error reading search query param:', e);
     }
+  }, []);
+
+  // Auto-close mobile panels when resizing above 900px, or desktop menus below 900px
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 900) {
+        setIsMobileGenresOpen(false);
+        setIsMobileSearchOpen(false);
+      } else {
+        setIsGenresOpen(false);
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Lock body scroll when mobile search or mobile genres menu is open
@@ -265,14 +280,16 @@ export default function Navbar({
       <nav
         className="glass-nav"
         style={{
-          padding: '10px clamp(12px, 3vw, 28px)',
+          minHeight: '64px',
+          height: '64px',
+          padding: '0 clamp(12px, 3vw, 24px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '12px',
         }}
       >
-        {/* Left: Brand Logo + Subtitle + Developer Label */}
+        {/* Left: Brand Logo + Subtitle (clean, no top developer line) */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, flexShrink: 0 }}>
           <div
             style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
@@ -300,19 +317,7 @@ export default function Navbar({
               <span className="nav-subtitle" style={{ display: 'block', fontSize: '0.64rem', color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase', marginTop: '-1px' }}>
                 Multi-Language Discovery
               </span>
-              {/* Phone Developer Label directly under the logo */}
-              <div className="dev-label-mobile" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-                Developer: <strong style={{ color: '#e2d9ff', fontWeight: 600 }}>Rana Himesh R.</strong>
-              </div>
             </div>
-          </div>
-
-          {/* Desktop Developer Label inline to the right of logo */}
-          <div className="dev-label-desktop" style={{ marginLeft: '14px', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '1px', height: '20px', background: 'rgba(255, 255, 255, 0.16)' }} />
-            <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              Developer: <strong style={{ color: '#e2d9ff', fontWeight: 600 }}>Rana Himesh R.</strong>
-            </span>
           </div>
         </div>
 
@@ -321,8 +326,9 @@ export default function Navbar({
           {/* Genres Dropdown Button */}
           <div ref={desktopGenresRef} style={{ position: 'relative' }}>
             <button
+              className={`nav-genres-btn ${activeGenre ? 'is-active' : ''}`}
               onClick={() => {
-                if (window.innerWidth < 640) {
+                if (window.innerWidth < 900) {
                   setIsMobileGenresOpen(!isMobileGenresOpen);
                   setIsMobileSearchOpen(false);
                 } else {
@@ -332,56 +338,62 @@ export default function Navbar({
                 }
               }}
               onKeyDown={handleGenresKeyDown}
-              aria-label="Genres"
+              aria-label={activeGenre ? `Genres: ${activeGenre}, change` : 'Genres'}
               aria-haspopup="menu"
               aria-expanded={isGenresOpen || isMobileGenresOpen}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '0 12px',
-                minHeight: '40px',
-                height: '40px',
-                borderRadius: 'var(--radius-pill)',
-                background: activeGenre ? 'rgba(124, 92, 255, 0.28)' : 'rgba(255, 255, 255, 0.08)',
-                border: activeGenre ? '1px solid var(--accent-violet)' : '1px solid rgba(255, 255, 255, 0.14)',
-                color: activeGenre ? '#ffffff' : 'var(--text-secondary)',
-                fontSize: '0.84rem',
-                fontWeight: activeGenre ? 600 : 500,
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
-                flexShrink: 0,
-              }}
             >
-              <SlidersHorizontal size={15} color={activeGenre ? 'var(--accent-gold)' : 'var(--accent-violet)'} />
-              <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {activeGenre ? `Genres: ${activeGenre}` : 'Genres'}
-              </span>
-              {activeGenre && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectGenre(null);
-                    setIsGenresOpen(false);
-                    setIsMobileGenresOpen(false);
-                  }}
-                  aria-label="Clear genre filter"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    background: 'rgba(255, 255, 255, 0.18)',
-                    marginLeft: '2px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <X size={11} />
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <SlidersHorizontal size={17} color={activeGenre ? 'var(--accent-gold)' : 'var(--accent-violet)'} />
+                {/* Small violet dot badge when genre is active below 900px */}
+                {activeGenre && (
+                  <span
+                    className="genres-btn-dot-badge"
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: '-3px',
+                      right: '-3px',
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--accent-violet)',
+                      boxShadow: '0 0 6px var(--accent-violet)',
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Desktop text label, clear (x), and chevron (hidden below 900px via CSS) */}
+              <span className="genres-btn-desktop-content">
+                <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activeGenre ? `Genres: ${activeGenre}` : 'Genres'}
                 </span>
-              )}
-              <ChevronDown size={14} style={{ opacity: 0.7, transform: (isGenresOpen || isMobileGenresOpen) ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                {activeGenre && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectGenre(null);
+                      setIsGenresOpen(false);
+                      setIsMobileGenresOpen(false);
+                    }}
+                    aria-label="Clear genre filter"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      background: 'rgba(255, 255, 255, 0.18)',
+                      marginLeft: '2px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={11} />
+                  </span>
+                )}
+                <ChevronDown size={14} style={{ opacity: 0.7, transform: (isGenresOpen || isMobileGenresOpen) ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', marginLeft: '2px' }} />
+              </span>
             </button>
 
             {/* Desktop Genres Dropdown Menu */}
@@ -558,7 +570,7 @@ export default function Navbar({
             )}
           </div>
 
-          {/* Mobile Search Icon Trigger (< 640px) */}
+          {/* Mobile Search Icon Trigger (< 900px) */}
           <button
             className="mobile-search-trigger"
             onClick={() => {
